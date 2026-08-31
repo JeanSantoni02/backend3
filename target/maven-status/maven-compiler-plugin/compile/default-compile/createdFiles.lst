@@ -1,0 +1,13 @@
+com\bank\xyz\batch\BatchMigrationApplication.class
+com\bank\xyz\batch\config\BatchConfig$3.class
+com\bank\xyz\batch\processor\InteresProcessor.class
+com\bank\xyz\batch\processor\CuentaAnualProcessor.class
+com\bank\xyz\batch\model\Cuenta.class
+com\bank\xyz\batch\listener\CustomSkipListener.class
+com\bank\xyz\batch\partitioner\TransaccionPartitioner.class
+com\bank\xyz\batch\model\CuentaAnual.class
+com\bank\xyz\batch\model\Transaccion.class
+com\bank\xyz\batch\config\BatchConfig.class
+com\bank\xyz\batch\config\BatchConfig$2.class
+com\bank\xyz\batch\processor\TransaccionProcessor.class
+com\bank\xyz\batch\config\BatchConfig$1.class

@@ -1,0 +1,13 @@
+cuenta_id,fecha,transaccion,monto,descripcion
+103,08-03-2024,deposito,3000,Retiro parcial
+110,24-07-2024,retiro,1500,
+109,2024/03/18,deposito,3000,Ingreso mensual
+105,24/03/2024,deposito,1000,Ingreso navideño
+120,2024/04/11,compra,,Ingreso mensual
+120,2024-02-26,compra,1000,
+102,18-12-2024,compra,3000,
+105,2024/06/21,compra,3000,Ingreso extra
+111,2024/09/16,compra,2500,Ingreso mensual
+106,12/02/2024,deposito,-100,Ingreso navideño
+106,21-06-2024,deposito,2000,Ingreso extra
+106,2024/07/11,compra,1500,Ingreso navideño
