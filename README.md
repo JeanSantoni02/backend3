@@ -1,45 +1,65 @@
-# Migración de procesos batch — Banco XYZ
+# Banco XYZ — Modernización del sistema legacy
 
-Migración de tres procesos legacy del Banco XYZ a Spring Batch, con persistencia en
-PostgreSQL, tolerancia a fallos y escalado por particionamiento.
+Proyecto académico de modernización del sistema legacy del Banco XYZ, en dos etapas:
 
-Los datos de entrada son los archivos oficiales de
-[KariVillagran/bank_legacy_data](https://github.com/KariVillagran/bank_legacy_data),
-carpeta `data/semana_3` (1.000 filas por archivo).
+- **Semana 3:** migrar tres procesos batch a **Spring Batch**, con persistencia en PostgreSQL, tolerancia a fallos y escalado por particionamiento.
+- **Semana 5:** exponer esos datos mediante el patrón **Backend for Frontend (BFF)**, con un backend dedicado para cada tipo de cliente.
+
+Los datos de entrada son los archivos oficiales de [KariVillagran/bank_legacy_data](https://github.com/KariVillagran/bank_legacy_data), carpeta `data/semana_3` (1.000 filas por archivo).
 
 ---
 
-## 1. Los tres procesos
+## Arquitectura
 
-| Job | Archivo de entrada | Tablas que produce |
+```
+   Navegador          App móvil         Cajero automático
+       │                  │                     │
+       ▼                  ▼                     ▼
+   ┌────────┐        ┌──────────┐         ┌──────────┐
+   │bff-web │        │bff-mobile│         │ bff-atm  │
+   │ :8081  │        │  :8082   │         │  :8083   │
+   └────┬───┘        └────┬─────┘         └────┬─────┘
+        │                 │                    │
+        └─────────────────┼────────────────────┘
+                          ▼
+                 ┌─────────────────┐
+                 │ banco-core-api  │  único con acceso a la base
+                 │     :8080       │
+                 └────────┬────────┘
+                          ▼
+                 ┌─────────────────┐
+                 │   PostgreSQL    │
+                 │ bank_legacy_db  │
+                 └────────┬────────┘
+                          ▲
+                 ┌────────┴────────┐
+                 │ batch-migration │  carga los datos desde los CSV
+                 └─────────────────┘
+```
+
+El batch llena la base una vez. El servicio de dominio es el único que la consulta. Los tres BFF dan forma a esos datos según lo que necesita cada cliente.
+
+---
+
+## Módulos
+
+| Módulo | Puerto | Qué hace |
 |---|---|---|
-| `jobReporteTransaccionesDiarias` | `transacciones.csv` | `transacciones`, `resumen_diario` |
-| `jobCalculoInteresesMensuales` | `intereses.csv` | `intereses_calculados`, `cuentas` |
-| `jobEstadosCuentaAnuales` | `cuentas_anuales.csv` | `movimientos_anuales`, `estado_cuenta_anual` |
-
-Los tres siguen la misma forma: un **step particionado** que carga y valida el detalle
-en paralelo, y un **step de agregación** que genera el resumen con una sola sentencia
-`INSERT ... SELECT`.
-
-```
-jobReporteTransaccionesDiarias
-  └─ stepLimpiarErroresTransacciones   (tasklet)
-  └─ stepCargaTransaccionesMaestro     (particionado, 4 hilos)
-     ├─ stepCargaTransacciones:particion-0   250 filas
-     ├─ stepCargaTransacciones:particion-1   250 filas
-     ├─ stepCargaTransacciones:particion-2   250 filas
-     └─ stepCargaTransacciones:particion-3   250 filas
-  └─ stepResumenDiario                 (tasklet: agrupa por fecha)
-```
+| [`batch-migration`](batch-migration/) | — | Tres jobs de Spring Batch que cargan y validan los CSV |
+| `banco-core-api` | 8080 | Servicio de dominio. Único con acceso a PostgreSQL |
+| `bff-web` | 8081 | BFF del portal: respuestas completas y agregadas |
+| `bff-mobile` | 8082 | BFF de la app: respuestas mínimas |
+| `bff-atm` | 8083 | BFF de cajeros: operaciones críticas, con autenticación |
 
 ---
 
-## 2. Cómo ejecutarlo
+## Cómo ejecutarlo
 
 ### Requisitos
+
 - JDK 17
 - Maven 3.9 (o el que trae NetBeans)
-- PostgreSQL con una base llamada `bank_legacy_db`
+- PostgreSQL con la base `bank_legacy_db`
 
 ```sql
 CREATE DATABASE bank_legacy_db;
@@ -55,303 +75,175 @@ setx DB_USER "postgres"
 setx DB_PASSWORD "tu_password"
 ```
 
-Las tablas las crea la aplicación sola al arrancar: las de negocio por Hibernate
-(`ddl-auto=update`) y las de metadatos `BATCH_*` por Spring Batch
-(`spring.batch.jdbc.initialize-schema=always`).
-
-### Ejecución
+### 1. Compilar todo
 
 ```bash
 mvn clean package
-java -jar target/batch-migration-1.0-SNAPSHOT.jar --job=todos
 ```
 
-Opciones de `--job`: `todos` (por defecto), `transacciones`, `intereses`, `anuales`.
-
-El número de particiones se cambia sin recompilar:
+### 2. Cargar los datos (una sola vez)
 
 ```bash
-java -jar target/batch-migration-1.0-SNAPSHOT.jar --job=todos --banco.batch.particiones=1
+java -jar batch-migration/target/batch-migration-1.0-SNAPSHOT.jar --job=todos
 ```
 
-Los jobs son **idempotentes**: volver a ejecutarlos reemplaza los resultados anteriores
-en vez de duplicarlos.
+Crea las tablas y carga los tres archivos. Es idempotente: se puede repetir sin duplicar.
 
----
+### 3. Levantar los servicios
 
-## 3. Estructura del código
+Cada uno en su propia terminal, **empezando por el servicio de dominio**:
 
-```
-src/main/java/com/bank/xyz/batch/
-├── BatchMigrationApplication.java   arranque
-├── runner/BatchRunner.java          lanza los jobs según --job
-├── config/
-│   ├── BatchProperties.java         chunk, particiones, hilos, topes
-│   ├── InteresProperties.java       tasas de interés por tipo de cuenta
-│   ├── EscaladoConfig.java          pool de hilos de las particiones
-│   ├── TransaccionesJobConfig.java  proceso 1
-│   ├── InteresesJobConfig.java      proceso 2
-│   └── EstadoCuentaAnualJobConfig.java  proceso 3
-├── dto/          filas crudas del CSV (todos los campos String)
-├── model/        entidades JPA
-├── processor/    validaciones y reglas de negocio
-├── policy/       BancoSkipPolicy: política de descarte propia
-├── partition/    RangoLineasPartitioner
-├── listener/     métricas de ejecución y bitácora de errores
-├── tasklet/      limpieza previa y agregaciones
-└── util/         parseo de fechas, importes y normalización de texto
+```bash
+java -jar banco-core-api/target/banco-core-api-1.0-SNAPSHOT.jar
 ```
 
-### Por qué los DTO tienen todos los campos `String`
-
-El reader nunca convierte tipos. Lee cada fila como texto y el `ItemProcessor` decide qué
-hacer con ella.
-
-Si el reader mapeara directo a `LocalDate` o `BigDecimal`, las filas con formato raro
-fallarían **dentro del reader**, antes de llegar al processor: no se podrían validar, ni
-corregir, ni reportar con un motivo entendible. Leyendo como texto, el 100 % de las filas
-llega al processor y cada una recibe un tratamiento explícito.
-
----
-
-## 4. Los datos sucios del dataset oficial
-
-Conteos medidos sobre las 1.000 filas de cada archivo:
-
-**transacciones.csv**
-- Cuatro formatos de fecha mezclados: `yyyy-MM-dd` (294), `dd-MM-yyyy` (250), `dd/MM/yyyy` (234), `yyyy/MM/dd` (222)
-- 55 filas con `2024-13-01`, un mes que no existe
-- Monto vacío en 168 filas, negativo en 141, cero en 18
-- Tipo `invalid` en 308 filas y `desconocido` en 63
-
-**intereses.csv**
-- 1.000 filas pero solo **50 `cuenta_id` distintos** (101–150), cada uno repetido entre 12 y 33 veces
-- Tipo `-1` en 279 filas y `unknown` en 52
-- Saldo vacío en 211 filas
-- Edad vacía en 193 filas y edad `150` en 52
-- Nombre `Unknown` en 50 filas
-
-**cuentas_anuales.csv**
-- 20 cuentas (101–120), todas del año 2024
-- `deposito` en 296 filas y `depósito` **con tilde** en 52
-- Monto negativo en 254 filas, vacío en 48, cero en 12
-- Descripción vacía en 230 filas
-
-### Sobre las fechas de dos dígitos
-
-Se interpretan como **día primero** (`dd-MM-yyyy`). No es una suposición: 302 filas tienen
-el primer componente mayor que 12 y ninguna tiene el segundo mayor que 12, así que es la
-única lectura consistente con el archivo.
-
-El parseo usa `ResolverStyle.STRICT`. Con el modo por defecto, `2024-13-01` se "corrige"
-en silencio a diciembre; en modo estricto falla, que es lo que se quiere para poder
-reportarla como dato inválido.
-
----
-
-## 5. Manejo de errores: tres tratamientos distintos
-
-No todos los datos sucios merecen la misma reacción. El criterio es si el registro
-**puede cumplir su función de negocio**.
-
-### VÁLIDO
-Pasa todas las validaciones. Se persiste tal cual.
-
-### CORREGIDO — se transforma y se documenta
-El dato tenía un problema subsanable que no impide el cálculo.
-
-| Caso | Transformación |
-|---|---|
-| `depósito` con tilde | se normaliza a `deposito` quitando diacríticos |
-| Monto negativo en un movimiento anual | se toma el valor absoluto |
-| Edad vacía o igual a 150 | se deja en `null` |
-| Descripción vacía | se completa con `SIN DESCRIPCION` |
-| Nombre `Unknown` | se reemplaza por `SIN IDENTIFICAR` |
-
-El monto negativo se normaliza porque en el estado de cuenta **el signo lo aporta el tipo
-de movimiento**: un depósito suma y un retiro resta. Un monto negativo en el origen es
-redundante o está mal digitado. El valor original queda registrado en `observaciones`.
-
-La edad no entra en la fórmula de interés, así que una edad inválida no es razón para
-perder el registro financiero.
-
-### ANOMALÍA — se persiste, marcado para revisión
-El registro es utilizable pero sospechoso. El enunciado pide **detectar anomalías**, así
-que estos registros no se botan: se guardan con `estado = 'ANOMALIA'`.
-
-- Monto negativo o cero en transacciones
-- Tipo fuera del catálogo (`invalid`, `desconocido`), reclasificado como `no_clasificado`
-
-### DESCARTADO — se salta y queda en `errores_batch`
-El registro no puede cumplir su función. Se lanza `RegistroInvalidoException`, el step lo
-salta y el listener lo anota en la tabla `errores_batch` con el motivo y la fila original.
-
-| Proceso | Motivo del descarte | Filas |
-|---|---|---:|
-| Transacciones | monto ausente o no numérico | 160 |
-| Transacciones | fecha inválida para un reporte diario | 55 |
-| Intereses | tipo de cuenta no reconocido (`-1`) | 219 |
-| Intereses | saldo ausente | 211 |
-| Intereses | tipo de cuenta no reconocido (`unknown`) | 44 |
-| Estados anuales | monto ausente o no numérico | 48 |
-
-El razonamiento de cada uno:
-- **Fecha inválida en transacciones**: el reporte es *diario*. Sin día válido el registro
-  no se puede imputar a ninguna jornada.
-- **Saldo ausente en intereses**: no hay capital sobre el cual calcular. Asumir 0
-  ensuciaría el saldo final consolidado de la cuenta.
-- **Tipo no reconocido en intereses**: sin tipo no hay tasa aplicable, y aplicar una por
-  defecto sería inventar una condición comercial que el banco nunca pactó.
-
-Descartar no es perder información: `errores_batch` guarda job, step, fase, motivo, la
-fila original del CSV y la hora, para que auditoría pueda revisar exactamente qué no entró.
-
----
-
-## 6. Política de tolerancia a fallos
-
-`BancoSkipPolicy` distingue el **origen** del error, porque un dato sucio y una base de
-datos caída no se tratan igual.
-
-| Excepción | Decisión | Por qué |
-|---|---|---|
-| `RegistroInvalidoException` | se descarta, hasta 1.000 | Dato sucio conocido del legacy. Abortar el job por estos casos dejaría la migración sin correr nunca: el dataset trae cientos. |
-| `ParseException` | se descarta, hasta **50** | Línea malformada. El tope es mucho más bajo a propósito: si se malforman muchas líneas, lo probable es que el archivo esté corrupto o haya cambiado de formato, y ahí conviene detenerse antes que migrar basura. |
-| `DataAccessException` | **no se descarta** | Problema de infraestructura. El registro es válido y perderlo sería perder dinero. |
-
-Complementando el descarte, los steps declaran reintentos:
-
-```java
-.retryLimit(3)
-.retry(TransientDataAccessException.class)
+```bash
+java -jar bff-web/target/bff-web-1.0-SNAPSHOT.jar
 ```
 
-Ante una falla transitoria de base de datos se reintenta el chunk en lugar de perder
-registros válidos.
-
-### La bitácora se escribe en una transacción aparte
-
-`RegistroErroresSkipListener` inserta con `PROPAGATION_REQUIRES_NEW`. Cuando Spring Batch
-descarta un item, la transacción del chunk ya viene marcada para rollback; si el error se
-escribiera en esa misma transacción se perdería junto con ella, que es justo lo contrario
-de lo que se busca.
-
----
-
-## 7. Estrategia de escalado: particionamiento
-
-Se eligió **particionamiento local** por sobre un step multi-hilo.
-
-Con un step multi-hilo, todos los hilos comparten un único `ItemReader`, y
-`FlatFileItemReader` no es thread-safe: hay que sincronizarlo, lo que convierte la lectura
-en un cuello de botella y además rompe el reinicio, porque el estado guardado deja de ser
-confiable.
-
-Con particionamiento, cada partición tiene **su propio reader** sobre su propio rango de
-líneas. No hay estado compartido, no hace falta sincronizar, y cada partición guarda su
-avance por separado: si el job se cae, solo se reprocesa la partición afectada.
-
-### Parámetros y por qué
-
-| Parámetro | Valor | Justificación |
-|---|---|---|
-| `particiones` | 4 | 1.000 filas ÷ 4 = 250 por hilo, suficiente para que el paralelismo compense el costo de coordinación |
-| `chunk-size` | 50 | Cada partición hace 5 commits. Equilibra memoria y cantidad de transacciones |
-| `hilos-core` | 4 | Igual al número de particiones, para que arranquen todas a la vez y el paralelismo sea real y no una cola encubierta |
-| `hilos-max` | 8 | Margen si se sube el número de particiones |
-| `maximum-pool-size` | 20 | Por encima del pool de hilos: cada hilo toma una conexión para su chunk |
-
-Si la cola se llena se aplica `CallerRunsPolicy`: el hilo que envía la tarea la ejecuta él
-mismo. Aplica contrapresión en vez de descartar particiones.
-
-`RangoLineasPartitioner` cuenta las filas reales del archivo y reparte rangos disjuntos.
-Cuando la división no es exacta, el resto se reparte de a una entre las primeras
-particiones para que ningún hilo quede desbalanceado.
-
-Resultados medidos en `evidencias/04-comparacion-escalado.md`: **36 % menos tiempo total**
-con 4 particiones frente a 1.
-
----
-
-## 8. Modelo de datos
-
-| Tabla | Contenido |
-|---|---|
-| `transacciones` | Detalle validado. PK = el `id` del archivo |
-| `resumen_diario` | Una fila por día: total, promedio, máximo y anomalías |
-| `intereses_calculados` | Una fila por registro con interés calculado |
-| `cuentas` | Maestro consolidado por cuenta, con el saldo final actualizado |
-| `movimientos_anuales` | Movimientos normalizados, con el año derivado de la fecha |
-| `estado_cuenta_anual` | Informe por cuenta y año, con totales por tipo |
-| `errores_batch` | Bitácora de cada registro descartado |
-
-### Por qué `cuenta_id` no es la clave primaria de los intereses
-
-`intereses.csv` trae 1.000 filas con solo 50 `cuenta_id` distintos. Usar `cuenta_id` como
-`@Id` provoca violación de clave primaria a partir de la fila 51. El detalle usa clave
-autogenerada y el maestro consolidado por cuenta es la tabla `cuentas`, que se calcula
-después agrupando el detalle.
-
-Al consolidar se toma el valor **más frecuente** de cada cuenta con
-`mode() WITHIN GROUP`, que es más representativo que quedarse con el primero o el último
-leído y, sobre todo, da un resultado estable aunque las particiones terminen en distinto
-orden.
-
-### Por qué los importes son `BigDecimal` y no `Double`
-
-Son montos de dinero. Con `Double`, sumar 1.000 importes arrastra error de redondeo
-binario y los totales del estado de cuenta anual no cuadran.
-
----
-
-## 9. Cálculo de intereses
-
-```
-interes_mensual = saldo × (tasa_anual / 100) / 12
-saldo_final     = saldo + interes_mensual
+```bash
+java -jar bff-mobile/target/bff-mobile-1.0-SNAPSHOT.jar
 ```
 
-Redondeo `HALF_UP` a 2 decimales.
+```bash
+java -jar bff-atm/target/bff-atm-1.0-SNAPSHOT.jar
+```
 
-| Tipo de cuenta | Tasa anual | Criterio |
-|---|---:|---|
-| `ahorro` | 2,5 % | El banco abona al cliente |
-| `hipoteca` | 8,0 % | Crédito garantizado, riesgo menor |
-| `prestamo` | 12,0 % | Crédito de consumo, riesgo mayor |
+### 4. Probar
 
-El dataset no trae la tasa, así que la define el negocio. Los valores están en
-`application.properties` (`banco.interes.*`) y se cambian sin tocar código.
+Documentación interactiva de cada servicio:
 
-El interés **suma** en los tres tipos: en ahorro porque el banco abona al cliente, y en
-préstamo e hipoteca porque el interés devengado aumenta la deuda. El signo de la relación
-—activo o pasivo— lo da el tipo de cuenta, no el saldo.
+- http://localhost:8080/swagger-ui.html — servicio de dominio
+- http://localhost:8081/swagger-ui.html — BFF Web
+- http://localhost:8082/swagger-ui.html — BFF Móvil
+- http://localhost:8083/swagger-ui.html — BFF Cajeros
 
----
+Las cuentas cargadas van de la 101 a la 150. Las que tienen movimientos y estado anual son de la 101 a la 120.
 
-## 10. Pruebas
+```bash
+curl http://localhost:8081/bff/web/cuentas/101/panel
+```
+
+```bash
+curl http://localhost:8082/bff/movil/cuentas/101
+```
+
+```bash
+curl -H "X-ATM-Terminal: ATM-001" -H "X-ATM-Key: clave-demo-001" http://localhost:8083/bff/atm/cuentas/101/saldo
+```
+
+Retiro desde el cajero (idempotente por el campo `referencia`):
+
+```bash
+curl -X POST http://localhost:8083/bff/atm/cuentas/101/retiro -H "Content-Type: application/json" -H "X-ATM-Terminal: ATM-001" -H "X-ATM-Key: clave-demo-001" -d "{\"monto\":10000,\"referencia\":\"TICKET-001\"}"
+```
+
+> Las claves `clave-demo-001` y `clave-demo-002` son solo para probar en local. Se sobrescriben con las variables `ATM_001_KEY` y `ATM_002_KEY`.
+
+### Pruebas
 
 ```bash
 mvn test
 ```
 
-32 pruebas unitarias sobre los casos sucios reales del dataset: los cuatro formatos de
-fecha, el rechazo del mes 13, la unificación de `depósito` con y sin tilde, el cálculo de
-interés por tipo y cada regla de descarte.
+53 pruebas: 32 del batch y 21 de los servicios REST.
 
 ---
 
-## 11. Evidencia de ejecución
+## Endpoints
 
-En la carpeta `evidencias/`:
+### banco-core-api (8080) — genérico, lo consumen los BFF
+
+| Método | Ruta |
+|---|---|
+| GET | `/api/v1/cuentas` |
+| GET | `/api/v1/cuentas/{id}` |
+| GET | `/api/v1/cuentas/{id}/saldo` |
+| GET | `/api/v1/cuentas/{id}/movimientos?anio=` |
+| GET | `/api/v1/cuentas/{id}/movimientos/ultimos?cantidad=` |
+| GET | `/api/v1/cuentas/{id}/estados-anuales` |
+| GET | `/api/v1/cuentas/{id}/estados-anuales/{anio}` |
+| GET | `/api/v1/cuentas/{id}/intereses` |
+| GET | `/api/v1/transacciones/resumen-diario?desde=&hasta=` |
+| POST | `/api/v1/cuentas/{id}/retiros` |
+
+### bff-web (8081)
+
+| Método | Ruta | Devuelve |
+|---|---|---|
+| GET | `/bff/web/cuentas/{id}/panel` | Todo en una llamada |
+| GET | `/bff/web/cuentas` | Grilla paginada |
+
+### bff-mobile (8082)
+
+| Método | Ruta | Devuelve |
+|---|---|---|
+| GET | `/bff/movil/cuentas/{id}` | Saldo y últimos 5 movimientos |
+| GET | `/bff/movil/cuentas/{id}/saldo` | Solo el saldo |
+
+### bff-atm (8083) — requiere `X-ATM-Terminal` y `X-ATM-Key`
+
+| Método | Ruta | Devuelve |
+|---|---|---|
+| GET | `/bff/atm/cuentas/{id}/saldo` | Saldo y máximo retirable |
+| POST | `/bff/atm/cuentas/{id}/retiro` | Comprobante del retiro |
+
+---
+
+## Qué diferencia a cada BFF
+
+Tener tres aplicaciones no es el punto del patrón. El punto es que cada una tome decisiones distintas:
+
+| | bff-web | bff-mobile | bff-atm |
+|---|---|---|---|
+| Respuesta | Todo agregado | Solo lo esencial | Solo lo de la operación |
+| Nombres de campo | Descriptivos | Abreviados | Descriptivos |
+| Nulos | Se serializan | Se omiten | Se serializan |
+| Llamadas al dominio | 4 en paralelo | 2 | 1 |
+| Timeout de lectura | 5 s | 3 s | 8 s |
+| Autenticación | No | No | Por terminal |
+
+Para la misma cuenta, medido:
+
+| BFF | Respuesta | Bytes |
+|---|---|---:|
+| Web | Panel completo | 3.826 |
+| Móvil | Resumen | 418 |
+| ATM | Saldo | 133 |
+| Móvil | Solo saldo | 27 |
+
+**El móvil transmite un 89 % menos que la web.**
+
+El razonamiento completo —estrategias evaluadas, seguridad del cajero, integridad del retiro, códigos HTTP y resiliencia— está en [PROPUESTA-TECNICA-BFF.md](PROPUESTA-TECNICA-BFF.md).
+
+---
+
+## Modelo de datos
+
+| Tabla | La llena | Contenido |
+|---|---|---|
+| `transacciones` | batch | Detalle validado de transacciones |
+| `resumen_diario` | batch | Totales por día |
+| `intereses_calculados` | batch | Interés calculado por registro |
+| `cuentas` | batch | Maestro por cuenta con saldo final |
+| `movimientos_anuales` | batch | Movimientos normalizados |
+| `estado_cuenta_anual` | batch | Informe por cuenta y año |
+| `errores_batch` | batch | Bitácora de registros descartados |
+| `operaciones_atm` | core-api | Retiros, con clave de idempotencia |
+
+---
+
+## Evidencia
 
 | Archivo | Contenido |
 |---|---|
-| `01-ejecucion-1-particion.log` | Corrida completa con 1 partición |
-| `02-ejecucion-4-particiones.log` | Corrida completa con 4 particiones |
-| `03-verificacion-bd.txt` | 11 consultas SQL sobre el resultado en PostgreSQL |
-| `04-comparacion-escalado.md` | Comparación de tiempos y prueba del paralelismo |
+| [`evidencias/01-ejecucion-1-particion.log`](evidencias/) | Batch con 1 partición |
+| [`evidencias/02-ejecucion-4-particiones.log`](evidencias/) | Batch con 4 particiones |
+| [`evidencias/03-verificacion-bd.txt`](evidencias/) | 11 consultas SQL sobre el resultado |
+| [`evidencias/04-comparacion-escalado.md`](evidencias/04-comparacion-escalado.md) | Comparación de tiempos del batch |
+| [`evidencias/05-evidencia-bff.txt`](evidencias/) | Los tres BFF, seguridad, retiro y resiliencia |
 
-Resultado de la última corrida:
+Resultado de la carga:
 
 | Tabla | Filas |
 |---|---:|
@@ -363,5 +255,11 @@ Resultado de la última corrida:
 | `estado_cuenta_anual` | 20 |
 | `errores_batch` | 737 |
 
-Los totales cuadran con el origen: 1.000 filas leídas por archivo, 215 + 474 + 48 = 737
-descartadas y registradas con su motivo.
+De 3.000 filas leídas, 737 se descartaron por datos inválidos y quedaron registradas con su motivo. El detalle de las reglas está en el [README del módulo batch](batch-migration/README.md).
+
+---
+
+## Documentación
+
+- [Semana 3 — detalle del batch](batch-migration/README.md)
+- [Semana 5 — propuesta técnica del BFF](PROPUESTA-TECNICA-BFF.md)

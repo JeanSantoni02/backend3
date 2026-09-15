@@ -1,0 +1,102 @@
+===========================================================================
+ EVIDENCIA DE LOS BFF - BANCO XYZ (semana 5)
+ Generado: 2026-09-14 21:49:10
+===========================================================================
+
+Servicios levantados:
+  banco-core-api  :8080   servicio de dominio (unico con acceso a PostgreSQL)
+  bff-web         :8081
+  bff-mobile      :8082
+  bff-atm         :8083
+
+###########################################################################
+ 1. LA MISMA CUENTA VISTA POR CADA BFF
+###########################################################################
+
+--- 1.1 BFF WEB: una sola llamada con todo lo que la pantalla necesita ---
+{"titular":{"cuentaId":101,"nombre":"Bob Johnson","tipoCuenta":"hipoteca","identificado":true},"resumen":{"saldoActual":99814.17,"interesAcumulado":814.17,"registrosProcesados":13,"actualizadoEn":"2026-09-14T21:44:10.234158"},"estadosAnuales":[{"anio":2024,"cantidadMovimientos":44,"totalDepositos":38000.00,"totalRetiros":10800.00,"totalCompras":12700.00,"totalPagos":1600.00,"saldoNeto":12900.00,"movimientosConAnomalia":1}],"intereses":{"tipoCuenta":"hipoteca","tasaAnual":8.00,"registros":13,"interesMensualTotal":814.17},"movimientos":{"items":[{"id":3050,"fecha":"2024-12-26","tipo":"deposito","monto":100.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -100); descripcion ausente"},{"id":3457,"fecha":"2024-12-22","tipo":"deposito","monto":2500.00,"descripcion":"Ingreso navideño","estado":"VALIDO","observaciones":null},{"id":3364,"fecha":"2024-11-24","tipo":"deposito","monto":100.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -100); descripcion ausente"}],"pagina":0,"tamano":3,"total":44,"totalPaginas":15,"ultima":false},"meta":{"generadoEn":"2026-09-14T21:49:10.7943318","milisegundos":283,"avisos":["Hay 1 movimiento(s) marcados como anomalia para revision."]}}
+
+--- 1.2 BFF MOVIL: los mismos datos, reducidos a lo esencial ---
+{"id":101,"titular":"Bob Johnson","tipo":"hipoteca","saldo":99814.17,"ultimos":[{"f":"2024-12-26","t":"deposito","m":100.00,"d":"SIN DESCRIPCION"},{"f":"2024-12-22","t":"deposito","m":2500.00,"d":"Ingreso navideño"},{"f":"2024-11-24","t":"deposito","m":100.00,"d":"SIN DESCRIPCION"},{"f":"2024-11-23","t":"compra","m":1500.00,"d":"Compra en tienda"},{"f":"2024-11-22","t":"retiro","m":1000.00,"d":"SIN DESCRIPCION"}]}
+
+--- 1.3 BFF MOVIL: solo el saldo (la consulta mas frecuente de la app) ---
+{"id":101,"saldo":99814.17}
+
+--- 1.4 BFF ATM: saldo con el maximo retirable ya calculado ---
+{"cuenta":101,"saldoDisponible":99814.17,"maximoRetirable":99000.00,"denominacion":1000,"consultadoEn":"2026-09-14T21:49:11.1009791"}
+
+--- 1.5 TAMANO DE CADA RESPUESTA (bytes) ---
+  BFF Web   panel completo : 3826
+  BFF Movil resumen        : 418
+  BFF ATM   saldo          : 133
+  BFF Movil solo saldo     : 27
+
+###########################################################################
+ 2. SEGURIDAD DEL BFF DE CAJEROS
+###########################################################################
+
+--- 2.1 Sin credencial ---
+{"codigo":"NO_AUTORIZADO","mensaje":"terminal no autorizado"}  -> HTTP 401
+--- 2.2 Terminal valido con clave incorrecta ---
+{"codigo":"NO_AUTORIZADO","mensaje":"terminal no autorizado"}  -> HTTP 401
+--- 2.3 Terminal inexistente (mismo mensaje: no permite enumerar terminales) ---
+{"codigo":"NO_AUTORIZADO","mensaje":"terminal no autorizado"}  -> HTTP 401
+--- 2.4 Los otros BFF NO exponen retiros ---
+  POST /bff/web/.../retiro   -> HTTP 500
+  POST /bff/movil/.../retiro -> HTTP 500
+
+###########################################################################
+ 3. OPERACION CRITICA: RETIRO
+###########################################################################
+
+--- 3.1 Saldo antes ---
+{"cuenta":101,"saldoDisponible":99814.17,"maximoRetirable":99000.00,"denominacion":1000,"consultadoEn":"2026-09-14T21:49:28.9988518"}
+--- 3.2 Retiro valido de 10000 ---
+{"comprobante":"EVID-001","cuenta":101,"montoEntregado":10000,"saldoResultante":89814.17,"terminal":"ATM-001","duplicado":false,"fechaHora":"2026-09-14T21:49:29.2029294"}
+--- 3.3 MISMA referencia: idempotencia, no vuelve a debitar ---
+{"comprobante":"EVID-001","cuenta":101,"montoEntregado":10000.00,"saldoResultante":89814.17,"terminal":"ATM-001","duplicado":true,"fechaHora":"2026-09-14T21:49:29.202929"}
+--- 3.4 Saldo despues: bajo una sola vez ---
+{"cuenta":101,"saldoDisponible":89814.17,"maximoRetirable":89000.00,"denominacion":1000,"consultadoEn":"2026-09-14T21:49:29.4494779"}
+
+--- 3.5 Validaciones de negocio ---
+  monto 2500 (no es multiplo de 1000): {"codigo":"DENOMINACION","mensaje":"este cajero solo entrega billetes de 1000","entregarEfectivo":false,"referencia":null} -> HTTP 400
+  monto 300000 (sobre el tope)       : {"codigo":"MONTO_MAXIMO","mensaje":"el monto maximo por operacion es 200000","entregarEfectivo":false,"referencia":null} -> HTTP 400
+  monto 500 (bajo el minimo)         : {"codigo":"MONTO_MINIMO","mensaje":"el monto minimo de retiro es 1000","entregarEfectivo":false,"referencia":null} -> HTTP 400
+  monto negativo                     : {"codigo":"DATOS_INVALIDOS","mensaje":"el monto debe ser mayor a cero","entregarEfectivo":false,"referencia":null} -> HTTP 400
+  saldo insuficiente (cuenta 150)    : {"codigo":"SALDO_INSUFICIENTE","mensaje":"saldo insuficiente para el monto solicitado","entregarEfectivo":false,"referencia":null} -> HTTP 422
+  cuenta inexistente                 : {"codigo":"CUENTA_NO_ENCONTRADA","mensaje":"cuenta no encontrada","entregarEfectivo":false,"referencia":null} -> HTTP 404
+
+Nota sobre los codigos HTTP: 400 es una peticion mal formada o un monto que
+el cajero no puede entregar; 422 es una peticion correcta que el negocio no
+puede cumplir (saldo insuficiente); 404 es cuenta inexistente. El cajero usa
+esa diferencia para decidir si pide otro monto o cancela la operacion.
+
+###########################################################################
+ 4. RESILIENCIA: QUE PASA SI EL SERVICIO DE DOMINIO SE CAE
+###########################################################################
+
+Se detuvo banco-core-api (:8080). Cada BFF degrada a su manera:
+
+--- 4.1 BFF WEB ---
+{"estado":503,"error":"SERVICIO_NO_DISPONIBLE","mensaje":"el portal no puede obtener los datos en este momento","ruta":"/bff/web/cuentas/101/panel","momento":"2026-09-14T21:49:52.4662269"}
+  -> HTTP 503 en 0.008256s
+--- 4.2 BFF MOVIL ---
+{"codigo":"SIN_SERVICIO","mensaje":"intenta nuevamente en unos momentos"}
+  -> HTTP 503 en 0.225267s
+--- 4.3 BFF ATM, consulta de saldo ---
+{"codigo":"SIN_SERVICIO","mensaje":"servicio no disponible, intente mas tarde","entregarEfectivo":false,"referencia":null}
+  -> HTTP 503 en 0.027032s
+--- 4.4 BFF ATM, RETIRO: el caso delicado ---
+{"codigo":"RETIRO_INDETERMINADO","mensaje":"no se pudo confirmar la operacion, no entregue efectivo","entregarEfectivo":false,"referencia":"EVID-CAIDA-01"}
+  -> HTTP 409 en 0.009022s
+
+El retiro no devuelve 503 sino 409 RETIRO_INDETERMINADO, con el campo
+entregarEfectivo en false y la referencia de la operacion. La diferencia
+importa: en una consulta fallida no pasa nada, pero en un retiro el BFF no
+sabe si el debito alcanzo a aplicarse. Entregar el efectivo en ese estado
+podria regalar dinero; no entregarlo y devolver la referencia permite
+reintentar la MISMA referencia despues, que por ser idempotente no cobra
+dos veces, o enviarla a conciliacion.
+
+Ningun BFF se queda colgado: todos responden en menos de 100 ms gracias a
+los timeouts configurados en el cliente HTTP.
