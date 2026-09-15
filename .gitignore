@@ -7,3 +7,5 @@ nbactions.xml
 *.log
 # Los logs de evidencia SI se versionan: son parte de la entrega.
 !evidencias/*.log
+__pycache__/
+*.pyc

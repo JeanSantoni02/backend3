@@ -26,6 +26,7 @@ Salidas de consola y capturas de pantalla de la ejecución del batch y de las cu
 | `06-apis-consola/04-bff-atm.txt` | BFF Cajeros: seguridad, retiro idempotente y validaciones |
 | `06-apis-consola/05-comparativa-bff.txt` | La misma cuenta vista por los tres BFF, con tamaños |
 | `07-capturas/*.png` | 12 capturas de Swagger UI y de las respuestas |
+| `Evidencia-de-ejecucion-Banco-XYZ.pdf` | Informe de 13 páginas que junta las capturas con las salidas de consola |
 
 Cada bloque de `06-apis-consola/` muestra la petición completa (método, URL, cabeceras y cuerpo), el código HTTP, el tiempo de respuesta y el JSON devuelto.
 
@@ -68,6 +69,19 @@ powershell -ExecutionPolicy Bypass -File evidencias\generar-capturas.ps1
 ```
 
 Usa Chrome en modo headless con un perfil temporal aparte: no abre ninguna ventana ni toca tu navegador ni lo que tengas en pantalla. Reescribe los PNG de `07-capturas/`.
+
+### Informe PDF
+
+```bash
+python evidencias\generar-informe-pdf.py
+```
+
+Junta las 12 capturas con los extractos de consola y arma
+`Evidencia-de-ejecucion-Banco-XYZ.pdf`. Hay que ejecutar antes los dos scripts
+anteriores, porque el informe se construye a partir de lo que ellos generan.
+
+Usa Chrome para imprimir el PDF, así que no hace falta instalar ninguna
+librería de Python adicional.
 
 ### Evidencia del batch
 

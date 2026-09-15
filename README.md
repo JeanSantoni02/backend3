@@ -246,6 +246,7 @@ Todo está en [`evidencias/`](evidencias/README.md), que explica cada archivo y 
 | `05-evidencia-bff.txt` | Los tres BFF, seguridad, retiro y resiliencia |
 | `06-apis-consola/` | Un archivo por API: petición, código HTTP, tiempo y respuesta |
 | `07-capturas/` | 12 capturas de Swagger UI y de las respuestas |
+| `Evidencia-de-ejecucion-Banco-XYZ.pdf` | Informe de 13 páginas con las capturas y las salidas de consola |
 
 La evidencia se regenera con dos scripts, con los servicios levantados:
 
@@ -255,6 +256,12 @@ powershell -ExecutionPolicy Bypass -File evidencias\generar-evidencia-apis.ps1
 
 ```bash
 powershell -ExecutionPolicy Bypass -File evidencias\generar-capturas.ps1
+```
+
+Y el informe PDF, que junta ambas cosas:
+
+```bash
+python evidencias\generar-informe-pdf.py
 ```
 
 Resultado de la carga:

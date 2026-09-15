@@ -98,14 +98,14 @@ Capturar -Url 'http://localhost:8083/swagger-ui.html' -Archivo '04-swagger-bff-a
 
 Write-Host ''
 Write-Host 'Capturando respuestas de las APIs...'
-Capturar -Url 'http://localhost:8080/api/v1/cuentas/101' -Archivo '05-core-api-cuenta.png' -Alto 260 -Descripcion 'detalle de cuenta'
-Capturar -Url 'http://localhost:8080/api/v1/cuentas/101/estados-anuales' -Archivo '06-core-api-estado-anual.png' -Alto 260 -Descripcion 'salida del proceso 3 del batch'
-Capturar -Url 'http://localhost:8080/api/v1/transacciones/resumen-diario?size=5' -Archivo '07-core-api-resumen-diario.png' -Alto 420 -Descripcion 'salida del proceso 1 del batch'
-Capturar -Url 'http://localhost:8081/bff/web/cuentas/101/panel?tamano=3' -Archivo '08-bff-web-panel.png' -Alto 320 -Descripcion 'respuesta completa del portal'
-Capturar -Url 'http://localhost:8082/bff/movil/cuentas/101' -Archivo '09-bff-movil-resumen.png' -Alto 220 -Descripcion 'respuesta minima de la app'
-Capturar -Url 'http://localhost:8082/bff/movil/cuentas/101/saldo' -Archivo '10-bff-movil-saldo.png' -Alto 170 -Descripcion 'solo el saldo'
-Capturar -Url 'http://localhost:8083/bff/atm/cuentas/101/saldo' -Archivo '11-bff-atm-sin-credencial.png' -Alto 170 -Descripcion 'rechazo 401 sin credencial'
-Capturar -Url 'http://localhost:8080/api/v1/cuentas/999' -Archivo '12-core-api-error-404.png' -Alto 220 -Descripcion 'manejo de error'
+Capturar -Url 'http://localhost:8080/api/v1/cuentas/101' -Archivo '05-core-api-cuenta.png' -Alto 112 -Descripcion 'detalle de cuenta'
+Capturar -Url 'http://localhost:8080/api/v1/cuentas/101/estados-anuales' -Archivo '06-core-api-estado-anual.png' -Alto 112 -Descripcion 'salida del proceso 3 del batch'
+Capturar -Url 'http://localhost:8080/api/v1/transacciones/resumen-diario?size=5' -Archivo '07-core-api-resumen-diario.png' -Alto 195 -Descripcion 'salida del proceso 1 del batch'
+Capturar -Url 'http://localhost:8081/bff/web/cuentas/101/panel?tamano=3' -Archivo '08-bff-web-panel.png' -Alto 235 -Descripcion 'respuesta completa del portal'
+Capturar -Url 'http://localhost:8082/bff/movil/cuentas/101' -Archivo '09-bff-movil-resumen.png' -Alto 140 -Descripcion 'respuesta minima de la app'
+Capturar -Url 'http://localhost:8082/bff/movil/cuentas/101/saldo' -Archivo '10-bff-movil-saldo.png' -Alto 100 -Descripcion 'solo el saldo'
+Capturar -Url 'http://localhost:8083/bff/atm/cuentas/101/saldo' -Archivo '11-bff-atm-sin-credencial.png' -Alto 100 -Descripcion 'rechazo 401 sin credencial'
+Capturar -Url 'http://localhost:8080/api/v1/cuentas/999' -Archivo '12-core-api-error-404.png' -Alto 112 -Descripcion 'manejo de error'
 
 Write-Host ''
 Write-Host "Listo. Capturas en evidencias\07-capturas\" -ForegroundColor Green
