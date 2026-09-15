@@ -1,0 +1,29 @@
+﻿===========================================================================
+ COMPARATIVA - LA MISMA CUENTA VISTA POR LOS TRES BFF
+ Generado: 2026-09-14 22:03:10
+===========================================================================
+
+Los tres devuelven la cuenta 101, pero cada uno decide que incluir.
+
+--- Tamano de la respuesta ---
+
+  RESPUESTA                                       BYTES
+  -----------------------------------------------------
+  bff-web   panel completo                         3827
+  bff-movil resumen                                 419
+  bff-atm   saldo                                   135
+  bff-movil solo saldo                               28
+
+  El BFF movil transmite un 89% menos que el BFF web para la misma cuenta.
+
+--- Respuesta del BFF web ---
+
+  {"titular":{"cuentaId":101,"nombre":"Bob Johnson","tipoCuenta":"hipoteca","identificado":true},"resumen":{"saldoActual":115814.17,"interesAcumulado":814.17,"registrosProcesados":13,"actualizadoEn":"2026-09-14T22:03:10.444866"},"estadosAnuales":[{"anio":2024,"cantidadMovimientos":44,"totalDepositos":38000.00,"totalRetiros":10800.00,"totalCompras":12700.00,"totalPagos":1600.00,"saldoNeto":12900.00,"movimientosConAnomalia":1}],"intereses":{"tipoCuenta":"hipoteca","tasaAnual":2.50,"registros":13,"interesMensualTotal":814.17},"movimientos":{"items":[{"id":3050,"fecha":"2024-12-26","tipo":"deposito","monto":100.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -100); descripcion ausente"},{"id":3457,"fecha":"2024-12-22","tipo":"deposito","monto":2500.00,"descripcion":"Ingreso navideño","estado":"VALIDO","observaciones":null},{"id":3364,"fecha":"2024-11-24","tipo":"deposito","monto":100.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -100); descripcion ausente"},{"id":3043,"fecha":"2024-11-23","tipo":"compra","monto":1500.00,"descripcion":"Compra en tienda","estado":"VALIDO","observaciones":null},{"id":3477,"fecha":"2024-11-22","tipo":"retiro","monto":1000.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"descripcion ausente"},{"id":3539,"fecha":"2024-11-11","tipo":"compra","monto":1000.00,"descripcion":"Ingreso navideño","estado":"VALIDO","observaciones":null},{"id":3710,"fecha":"2024-10-16","tipo":"deposito","monto":100.00,"descripcion":"Retiro parcial","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -100)"},{"id":3375,"fecha":"2024-10-06","tipo":"deposito","monto":1500.00,"descripcion":"Ingreso mensual","estado":"VALIDO","observaciones":null},{"id":3283,"fecha":"2024-09-30","tipo":"deposito","monto":500.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -500); descripcion ausente"},{"id":3049,"fecha":"2024-09-25","tipo":"deposito","monto":2500.00,"descripcion":"Ingreso mensual","estado":"VALIDO","observaciones":null},{"id":3458,"fecha":"2024-09-05","tipo":"deposito","monto":2500.00,"descripcion":"Ingreso extra","estado":"VALIDO","observaciones":null},{"id":3239,"fecha":"2024-09-02","tipo":"deposito","monto":3000.00,"descripcion":"Ingreso navideño","estado":"VALIDO","observaciones":null},{"id":3162,"fecha":"2024-08-31","tipo":"deposito","monto":3000.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"descripcion ausente"},{"id":3722,"fecha":"2024-08-24","tipo":"compra","monto":0.00,"descripcion":"Compra en tienda","estado":"ANOMALIA","observaciones":"monto en cero"},{"id":3795,"fecha":"2024-08-04","tipo":"compra","monto":2000.00,"descripcion":"Compra en tienda","estado":"VALIDO","observaciones":null},{"id":3131,"fecha":"2024-08-01","tipo":"retiro","monto":2000.00,"descripcion":"Ingreso extra","estado":"VALIDO","observaciones":null},{"id":3011,"fecha":"2024-07-20","tipo":"retiro","monto":2000.00,"descripcion":"Compra en tienda","estado":"VALIDO","observaciones":null},{"id":3331,"fecha":"2024-07-16","tipo":"retiro","monto":2500.00,"descripcion":"Ingreso navideño","estado":"VALIDO","observaciones":null},{"id":3606,"fecha":"2024-07-09","tipo":"retiro","monto":1000.00,"descripcion":"Ingreso mensual","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -1000)"},{"id":3374,"fecha":"2024-06-30","tipo":"deposito","monto":1500.00,"descripcion":"Ingreso extra","estado":"VALIDO","observaciones":null}],"pagina":0,"tamano":20,"total":44,"totalPaginas":3,"ultima":false},"meta":{"generadoEn":"2026-09-14T22:03:10.9817679","milisegundos":15,"avisos":["Hay 1 movimiento(s) marcados como anomalia para revision."]}}
+
+--- Respuesta del BFF movil ---
+
+  {"id":101,"titular":"Bob Johnson","tipo":"hipoteca","saldo":115814.17,"ultimos":[{"f":"2024-12-26","t":"deposito","m":100.00,"d":"SIN DESCRIPCION"},{"f":"2024-12-22","t":"deposito","m":2500.00,"d":"Ingreso navideño"},{"f":"2024-11-24","t":"deposito","m":100.00,"d":"SIN DESCRIPCION"},{"f":"2024-11-23","t":"compra","m":1500.00,"d":"Compra en tienda"},{"f":"2024-11-22","t":"retiro","m":1000.00,"d":"SIN DESCRIPCION"}]}
+
+--- Respuesta del BFF de cajeros ---
+
+  {"cuenta":101,"saldoDisponible":115814.17,"maximoRetirable":115000.00,"denominacion":1000,"consultadoEn":"2026-09-14T22:03:11.1141789"}

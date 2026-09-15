@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -49,6 +50,15 @@ public class ManejadorGlobalDeErrores {
         return ResponseEntity.badRequest().body(new ErrorResponse(
                 400, "DATOS_INVALIDOS", "la peticion no cumple las validaciones",
                 detalles, peticion.getRequestURI(), LocalDateTime.now()));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> cuerpoIlegible(HttpMessageNotReadableException e,
+                                                        HttpServletRequest peticion) {
+        log.warn("Peticion con cuerpo JSON invalido: {}", e.getMessage());
+        return ResponseEntity.badRequest().body(ErrorResponse.de(
+                400, "JSON_INVALIDO", "el cuerpo de la peticion no es JSON valido",
+                peticion.getRequestURI()));
     }
 
     // Nunca devolver el stacktrace ni el mensaje interno al cliente:

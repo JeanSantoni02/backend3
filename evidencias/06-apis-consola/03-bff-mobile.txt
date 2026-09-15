@@ -1,0 +1,40 @@
+﻿===========================================================================
+ API 3 - bff-mobile (BFF de la app movil)
+ Puerto 8082
+ Generado: 2026-09-14 22:03:09
+===========================================================================
+
+Backend dedicado a la app de telefono. Devuelve lo minimo: saldo y ultimos
+cinco movimientos, con nombres de campo cortos, sin campos nulos y con las
+descripciones acortadas, para reducir el consumo de datos del usuario.
+
+Swagger UI: http://localhost:8082/swagger-ui.html
+Servicio activo, se identifica como: Banco XYZ - BFF Movil
+
+--- Pantalla principal de la app ---
+
+  GET http://localhost:8082/bff/movil/cuentas/101
+
+  HTTP 200   (0.020059 s)
+
+  {"id":101,"titular":"Bob Johnson","tipo":"hipoteca","saldo":125814.17,"ultimos":[{"f":"2024-12-26","t":"deposito","m":100.00,"d":"SIN DESCRIPCION"},{"f":"2024-12-22","t":"deposito","m":2500.00,"d":"Ingreso navideño"},{"f":"2024-11-24","t":"deposito","m":100.00,"d":"SIN DESCRIPCION"},{"f":"2024-11-23","t":"compra","m":1500.00,"d":"Compra en tienda"},{"f":"2024-11-22","t":"retiro","m":1000.00,"d":"SIN DESCRIPCION"}]}
+
+  NOTA: Los movimientos usan f (fecha), t (tipo), m (monto) y d (descripcion). Las claves se repiten en cada item, asi que acortarlas ahorra bytes reales.
+
+--- Consulta de saldo, la operacion mas frecuente ---
+
+  GET http://localhost:8082/bff/movil/cuentas/101/saldo
+
+  HTTP 200   (0.006299 s)
+
+  {"id":101,"saldo":125814.17}
+
+--- Cuenta inexistente ---
+
+  GET http://localhost:8082/bff/movil/cuentas/999
+
+  HTTP 404   (0.007944 s)
+
+  {"codigo":"NO_ENCONTRADO","mensaje":"cuenta no encontrada"}
+
+  NOTA: El error tambien es compacto: solo codigo y mensaje, sin ruta ni marca de tiempo.

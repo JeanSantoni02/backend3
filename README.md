@@ -235,13 +235,27 @@ El razonamiento completo —estrategias evaluadas, seguridad del cajero, integri
 
 ## Evidencia
 
+Todo está en [`evidencias/`](evidencias/README.md), que explica cada archivo y cómo regenerarlo.
+
 | Archivo | Contenido |
 |---|---|
-| [`evidencias/01-ejecucion-1-particion.log`](evidencias/) | Batch con 1 partición |
-| [`evidencias/02-ejecucion-4-particiones.log`](evidencias/) | Batch con 4 particiones |
-| [`evidencias/03-verificacion-bd.txt`](evidencias/) | 11 consultas SQL sobre el resultado |
-| [`evidencias/04-comparacion-escalado.md`](evidencias/04-comparacion-escalado.md) | Comparación de tiempos del batch |
-| [`evidencias/05-evidencia-bff.txt`](evidencias/) | Los tres BFF, seguridad, retiro y resiliencia |
+| `01-ejecucion-1-particion.log` | Batch con 1 partición |
+| `02-ejecucion-4-particiones.log` | Batch con 4 particiones |
+| `03-verificacion-bd.txt` | 11 consultas SQL sobre el resultado |
+| [`04-comparacion-escalado.md`](evidencias/04-comparacion-escalado.md) | Comparación de tiempos del batch |
+| `05-evidencia-bff.txt` | Los tres BFF, seguridad, retiro y resiliencia |
+| `06-apis-consola/` | Un archivo por API: petición, código HTTP, tiempo y respuesta |
+| `07-capturas/` | 12 capturas de Swagger UI y de las respuestas |
+
+La evidencia se regenera con dos scripts, con los servicios levantados:
+
+```bash
+powershell -ExecutionPolicy Bypass -File evidencias\generar-evidencia-apis.ps1
+```
+
+```bash
+powershell -ExecutionPolicy Bypass -File evidencias\generar-capturas.ps1
+```
 
 Resultado de la carga:
 

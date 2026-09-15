@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -39,6 +40,15 @@ public class ManejadorDeErrores {
                 .map(campo -> campo.getDefaultMessage())
                 .orElse("datos invalidos");
         return ResponseEntity.badRequest().body(ErrorAtm.de("DATOS_INVALIDOS", detalle));
+    }
+
+    // Un cuerpo JSON malformado es culpa del cliente, no del servidor: sin este
+    // manejador cae en el catch-all y se reporta como 500.
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorAtm> cuerpoIlegible(HttpMessageNotReadableException e) {
+        log.warn("Peticion con cuerpo JSON invalido: {}", e.getMessage());
+        return ResponseEntity.badRequest()
+                .body(ErrorAtm.de("JSON_INVALIDO", "el cuerpo de la peticion no es JSON valido"));
     }
 
     @ExceptionHandler(RetiroIndeterminadoException.class)
