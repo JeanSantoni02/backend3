@@ -1,0 +1,171 @@
+﻿===========================================================================
+ API 4 - bff-atm (BFF de cajeros automaticos)
+ Puerto 8083
+ Generado: 2026-09-14 22:03:09
+===========================================================================
+
+Backend dedicado a los cajeros. Es el unico que ejecuta operaciones sobre el
+dinero, por lo tanto el unico con autenticacion. Cada terminal se identifica
+en cada peticion con su credencial.
+
+Swagger UI: http://localhost:8083/swagger-ui.html
+Servicio activo, se identifica como: Banco XYZ - BFF Cajeros
+
+###########################################################################
+ SEGURIDAD
+###########################################################################
+
+--- Sin credencial ---
+
+  GET http://localhost:8083/bff/atm/cuentas/101/saldo
+
+  HTTP 401   (0.003582 s)
+
+  {"codigo":"NO_AUTORIZADO","mensaje":"terminal no autorizado"}
+
+  NOTA: Rechazado con 401 antes de llegar al controlador.
+
+--- Terminal valido con clave incorrecta ---
+
+  GET http://localhost:8083/bff/atm/cuentas/101/saldo
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-equivocada
+
+  HTTP 401   (0.024800 s)
+
+  {"codigo":"NO_AUTORIZADO","mensaje":"terminal no autorizado"}
+
+--- Terminal inexistente ---
+
+  GET http://localhost:8083/bff/atm/cuentas/101/saldo
+  X-ATM-Terminal: ATM-999
+  X-ATM-Key: loquesea
+
+  HTTP 401   (0.023770 s)
+
+  {"codigo":"NO_AUTORIZADO","mensaje":"terminal no autorizado"}
+
+  NOTA: Mismo mensaje que el caso anterior, a proposito: si se distinguieran, se podrian enumerar los terminales validos probando de a uno.
+
+###########################################################################
+ OPERACIONES
+###########################################################################
+
+--- Consulta de saldo con credencial valida ---
+
+  GET http://localhost:8083/bff/atm/cuentas/101/saldo
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+
+  HTTP 200   (0.074615 s)
+
+  {"cuenta":101,"saldoDisponible":125814.17,"maximoRetirable":125000.00,"denominacion":1000,"consultadoEn":"2026-09-14T22:03:10.1357156"}
+
+  NOTA: maximoRetirable ya viene calculado por el BFF: el minimo entre el saldo y el tope por operacion, redondeado hacia abajo a la denominacion del cajero.
+
+--- Retiro valido de 10000 ---
+
+  POST http://localhost:8083/bff/atm/cuentas/101/retiro
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+  body: {"monto":10000,"referencia":"EVID-20260914-220309"}
+
+  HTTP 200   (0.360029 s)
+
+  {"comprobante":"EVID-20260914-220309","cuenta":101,"montoEntregado":10000,"saldoResultante":115814.17,"terminal":"ATM-001","duplicado":false,"fechaHora":"2026-09-14T22:03:10.4448655"}
+
+--- Se repite la MISMA referencia (idempotencia) ---
+
+  POST http://localhost:8083/bff/atm/cuentas/101/retiro
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+  body: {"monto":10000,"referencia":"EVID-20260914-220309"}
+
+  HTTP 200   (0.019311 s)
+
+  {"comprobante":"EVID-20260914-220309","cuenta":101,"montoEntregado":10000.00,"saldoResultante":115814.17,"terminal":"ATM-001","duplicado":true,"fechaHora":"2026-09-14T22:03:10.444866"}
+
+  NOTA: Devuelve el mismo comprobante con duplicado=true y el mismo saldoResultante. No vuelve a debitar.
+
+--- Saldo despues de los dos intentos ---
+
+  GET http://localhost:8083/bff/atm/cuentas/101/saldo
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+
+  HTTP 200   (0.030073 s)
+
+  {"cuenta":101,"saldoDisponible":115814.17,"maximoRetirable":115000.00,"denominacion":1000,"consultadoEn":"2026-09-14T22:03:10.6401894"}
+
+  NOTA: El saldo bajo una sola vez respecto del inicial, que era {"cuenta":101,"saldoDisponible":125814.17,"maximoRetirable":125000.00,"denominacion":1000,"consultadoEn":"2026-09-14T22:03:10.1357156"}
+
+###########################################################################
+ VALIDACIONES DE NEGOCIO
+###########################################################################
+
+--- Monto que no es multiplo de la denominacion ---
+
+  POST http://localhost:8083/bff/atm/cuentas/101/retiro
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+  body: {"monto":2500,"referencia":"EVID-DENOM"}
+
+  HTTP 400   (0.018244 s)
+
+  {"codigo":"DENOMINACION","mensaje":"este cajero solo entrega billetes de 1000","entregarEfectivo":false,"referencia":null}
+
+  NOTA: Se rechaza en el BFF, sin llegar al servicio de dominio: un cajero solo entrega billetes de la denominacion que tiene cargada.
+
+--- Monto sobre el tope por operacion ---
+
+  POST http://localhost:8083/bff/atm/cuentas/101/retiro
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+  body: {"monto":300000,"referencia":"EVID-TOPE"}
+
+  HTTP 400   (0.021286 s)
+
+  {"codigo":"MONTO_MAXIMO","mensaje":"el monto maximo por operacion es 200000","entregarEfectivo":false,"referencia":null}
+
+--- Monto negativo ---
+
+  POST http://localhost:8083/bff/atm/cuentas/101/retiro
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+  body: {"monto":-5000,"referencia":"EVID-NEG"}
+
+  HTTP 400   (0.021505 s)
+
+  {"codigo":"DATOS_INVALIDOS","mensaje":"el monto debe ser mayor a cero","entregarEfectivo":false,"referencia":null}
+
+--- Saldo insuficiente ---
+
+  POST http://localhost:8083/bff/atm/cuentas/150/retiro
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+  body: {"monto":200000,"referencia":"EVID-SALDO"}
+
+  HTTP 422   (0.045570 s)
+
+  {"codigo":"SALDO_INSUFICIENTE","mensaje":"saldo insuficiente para el monto solicitado","entregarEfectivo":false,"referencia":null}
+
+  NOTA: Devuelve 422 y no 400: la peticion esta bien formada, es el negocio el que no puede cumplirla. El cajero usa esa diferencia para ofrecer el maximo disponible en vez de pedir otro monto a ciegas.
+
+--- Cuenta inexistente ---
+
+  POST http://localhost:8083/bff/atm/cuentas/999/retiro
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+  body: {"monto":5000,"referencia":"EVID-NOCTA"}
+
+  HTTP 404   (0.027429 s)
+
+  {"codigo":"CUENTA_NO_ENCONTRADA","mensaje":"cuenta no encontrada","entregarEfectivo":false,"referencia":null}
+
+Codigos HTTP usados y por que:
+  400  peticion mal formada o monto que el cajero no puede entregar
+  401  terminal no autorizado
+  404  la cuenta no existe
+  409  no se pudo confirmar el retiro: NO entregar efectivo, conciliar
+  422  peticion correcta que el negocio no puede cumplir
+  503  el servicio de dominio no responde

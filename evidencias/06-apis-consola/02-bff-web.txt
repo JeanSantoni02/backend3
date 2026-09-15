@@ -1,0 +1,46 @@
+﻿===========================================================================
+ API 2 - bff-web (BFF del portal)
+ Puerto 8081
+ Generado: 2026-09-14 22:03:09
+===========================================================================
+
+Backend dedicado al portal de navegador. Resuelve en paralelo cuatro consultas
+al servicio de dominio y devuelve todo lo que la pantalla necesita en una sola
+respuesta, para que el navegador no tenga que encadenar llamadas.
+
+Swagger UI: http://localhost:8081/swagger-ui.html
+Servicio activo, se identifica como: Banco XYZ - BFF Web
+
+--- Panel completo de la cuenta en una sola llamada ---
+
+  GET http://localhost:8081/bff/web/cuentas/101/panel?tamano=3
+
+  HTTP 200   (0.025655 s)
+
+  {"titular":{"cuentaId":101,"nombre":"Bob Johnson","tipoCuenta":"hipoteca","identificado":true},"resumen":{"saldoActual":125814.17,"interesAcumulado":814.17,"registrosProcesados":13,"actualizadoEn":"2026-09-14T21:50:13.710782"},"estadosAnuales":[{"anio":2024,"cantidadMovimientos":44,"totalDepositos":38000.00,"totalRetiros":10800.00,"totalCompras":12700.00,"totalPagos":1600.00,"saldoNeto":12900.00,"movimientosConAnomalia":1}],"intereses":{"tipoCuenta":"hipoteca","tasaAnual":2.50,"registros":13,"interesMensualTotal":814.17},"movimientos":{"items":[{"id":3050,"fecha":"2024-12-26","tipo":"deposito","monto":100.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -100); descripcion ausente"},{"id":3457,"fecha":"2024-12-22","tipo":"deposito","monto":2500.00,"descripcion":"Ingreso navideño","estado":"VALIDO","observaciones":null},{"id":3364,"fecha":"2024-11-24","tipo":"deposito","monto":100.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -100); descripcion ausente"}],"pagina":0,"tamano":3,"total":44,"totalPaginas":15,"ultima":false},"meta":{"generadoEn":"2026-09-14T22:03:09.5643872","milisegundos":22,"avisos":["Hay 1 movimiento(s) marcados como anomalia para revision."]}}
+
+  NOTA: El campo meta.milisegundos muestra cuanto tardo el fan-out en paralelo. El campo meta.avisos lo genera el BFF a partir de los datos, no viene del dominio.
+
+--- Filtrado por anio y paginado ---
+
+  GET http://localhost:8081/bff/web/cuentas/105/panel?anio=2024&pagina=1&tamano=2
+
+  HTTP 200   (0.027106 s)
+
+  {"titular":{"cuentaId":105,"nombre":"Alice Brown","tipoCuenta":"prestamo","identificado":true},"resumen":{"saldoActual":103712.91,"interesAcumulado":712.91,"registrosProcesados":11,"actualizadoEn":"2026-09-14T21:50:13.710782"},"estadosAnuales":[{"anio":2024,"cantidadMovimientos":56,"totalDepositos":27100.00,"totalRetiros":26200.00,"totalCompras":19400.00,"totalPagos":7500.00,"saldoNeto":-26000.00,"movimientosConAnomalia":0}],"intereses":{"tipoCuenta":"prestamo","tasaAnual":2.50,"registros":11,"interesMensualTotal":712.91},"movimientos":{"items":[{"id":3381,"fecha":"2024-12-04","tipo":"compra","monto":1000.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"descripcion ausente"},{"id":3072,"fecha":"2024-12-01","tipo":"deposito","monto":2000.00,"descripcion":"Ingreso mensual","estado":"VALIDO","observaciones":null}],"pagina":1,"tamano":2,"total":56,"totalPaginas":28,"ultima":false},"meta":{"generadoEn":"2026-09-14T22:03:09.6271596","milisegundos":23,"avisos":[]}}
+
+--- Grilla paginada de cuentas ---
+
+  GET http://localhost:8081/bff/web/cuentas?pagina=0&tamano=3
+
+  HTTP 200   (0.012504 s)
+
+  {"contenido":[{"cuentaId":101,"nombre":"Bob Johnson","tipo":"hipoteca","saldoFinal":125814.17,"interesTotal":814.17,"registrosProcesados":13,"actualizadoEn":"2026-09-14T21:50:13.710782"},{"cuentaId":102,"nombre":"Alice Brown","tipo":"hipoteca","saldoFinal":118811.66,"interesTotal":811.66,"registrosProcesados":14,"actualizadoEn":"2026-09-14T21:50:13.710782"},{"cuentaId":103,"nombre":"Bob Johnson","tipo":"ahorro","saldoFinal":39239.58,"interesTotal":239.58,"registrosProcesados":6,"actualizadoEn":"2026-09-14T21:50:13.710782"}],"pagina":0,"tamano":3,"totalElementos":50,"totalPaginas":17,"ultima":false}
+
+--- Cuenta inexistente ---
+
+  GET http://localhost:8081/bff/web/cuentas/999/panel
+
+  HTTP 404   (0.013852 s)
+
+  {"estado":404,"error":"RECURSO_NO_ENCONTRADO","mensaje":"el recurso solicitado no existe","ruta":"/bff/web/cuentas/999/panel","momento":"2026-09-14T22:03:09.73122"}

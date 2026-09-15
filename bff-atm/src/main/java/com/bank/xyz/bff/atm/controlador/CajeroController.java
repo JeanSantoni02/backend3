@@ -5,6 +5,8 @@ import com.bank.xyz.bff.atm.modelo.RetiroAtmRequest;
 import com.bank.xyz.bff.atm.modelo.SaldoAtm;
 import com.bank.xyz.bff.atm.servicio.CajeroService;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.security.SecurityRequirements;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,6 +20,10 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/bff/atm")
 @Tag(name = "BFF Cajeros", description = "Operaciones criticas. Requiere credencial de terminal")
+@SecurityRequirements({
+        @SecurityRequirement(name = "terminal"),
+        @SecurityRequirement(name = "clave")
+})
 public class CajeroController {
 
     private final CajeroService servicio;

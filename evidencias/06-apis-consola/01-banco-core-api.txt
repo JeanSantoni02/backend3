@@ -1,0 +1,86 @@
+﻿===========================================================================
+ API 1 - banco-core-api (servicio de dominio)
+ Puerto 8080
+ Generado: 2026-09-14 22:03:08
+===========================================================================
+
+Servicio de dominio. Es el unico componente con acceso a PostgreSQL y expone
+endpoints genericos sobre las tablas que dejo el batch de la semana 3.
+Los tres BFF lo consumen; ningun cliente final lo usa directamente.
+
+Swagger UI: http://localhost:8080/swagger-ui.html
+Servicio activo, se identifica como: Banco XYZ - Servicio de dominio
+
+###########################################################################
+ CONSULTAS
+###########################################################################
+
+--- Listado paginado de cuentas ---
+
+  GET http://localhost:8080/api/v1/cuentas?page=0&size=3
+
+  HTTP 200   (0.144911 s)
+
+  {"contenido":[{"cuentaId":101,"nombre":"Bob Johnson","tipo":"hipoteca","saldoFinal":125814.17,"interesTotal":814.17,"registrosProcesados":13,"actualizadoEn":"2026-09-14T21:50:13.710782"},{"cuentaId":102,"nombre":"Alice Brown","tipo":"hipoteca","saldoFinal":118811.66,"interesTotal":811.66,"registrosProcesados":14,"actualizadoEn":"2026-09-14T21:50:13.710782"},{"cuentaId":103,"nombre":"Bob Johnson","tipo":"ahorro","saldoFinal":39239.58,"interesTotal":239.58,"registrosProcesados":6,"actualizadoEn":"2026-09-14T21:50:13.710782"}],"pagina":0,"tamano":3,"totalElementos":50,"totalPaginas":17,"ultima":false}
+
+--- Detalle de una cuenta ---
+
+  GET http://localhost:8080/api/v1/cuentas/101
+
+  HTTP 200   (0.037012 s)
+
+  {"cuentaId":101,"nombre":"Bob Johnson","tipo":"hipoteca","saldoFinal":125814.17,"interesTotal":814.17,"registrosProcesados":13,"actualizadoEn":"2026-09-14T21:50:13.710782"}
+
+--- Saldo de la cuenta ---
+
+  GET http://localhost:8080/api/v1/cuentas/101/saldo
+
+  HTTP 200   (0.006144 s)
+
+  {"cuentaId":101,"saldo":125814.17,"consultadoEn":"2026-09-14T22:03:09.2102453"}
+
+--- Movimientos de la cuenta, filtrados por anio ---
+
+  GET http://localhost:8080/api/v1/cuentas/101/movimientos?anio=2024&size=3
+
+  HTTP 200   (0.066926 s)
+
+  {"contenido":[{"id":3050,"cuentaId":101,"anio":2024,"fecha":"2024-12-26","tipo":"deposito","monto":100.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -100); descripcion ausente"},{"id":3457,"cuentaId":101,"anio":2024,"fecha":"2024-12-22","tipo":"deposito","monto":2500.00,"descripcion":"Ingreso navideño","estado":"VALIDO","observaciones":null},{"id":3364,"cuentaId":101,"anio":2024,"fecha":"2024-11-24","tipo":"deposito","monto":100.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -100); descripcion ausente"}],"pagina":0,"tamano":3,"totalElementos":44,"totalPaginas":15,"ultima":false}
+
+--- Estados de cuenta anuales (salida del proceso 3 del batch) ---
+
+  GET http://localhost:8080/api/v1/cuentas/101/estados-anuales
+
+  HTTP 200   (0.012016 s)
+
+  [{"cuentaId":101,"anio":2024,"cantidadMovimientos":44,"totalDepositos":38000.00,"totalRetiros":10800.00,"totalCompras":12700.00,"totalPagos":1600.00,"saldoNeto":12900.00,"movimientosConAnomalia":1}]
+
+--- Intereses calculados (salida del proceso 2 del batch) ---
+
+  GET http://localhost:8080/api/v1/cuentas/101/intereses?size=3
+
+  HTTP 200   (0.012559 s)
+
+  {"contenido":[{"id":2190,"cuentaId":101,"tipoCuenta":"ahorro","saldoInicial":10000.00,"tasaAnual":2.50,"interesMensual":20.83,"saldoFinal":10020.83,"estado":"VALIDO"},{"id":2269,"cuentaId":101,"tipoCuenta":"hipoteca","saldoInicial":7000.00,"tasaAnual":8.00,"interesMensual":46.67,"saldoFinal":7046.67,"estado":"VALIDO"},{"id":2168,"cuentaId":101,"tipoCuenta":"ahorro","saldoInicial":8000.00,"tasaAnual":2.50,"interesMensual":16.67,"saldoFinal":8016.67,"estado":"CORREGIDO"}],"pagina":0,"tamano":3,"totalElementos":13,"totalPaginas":5,"ultima":false}
+
+--- Resumen diario de transacciones (salida del proceso 1 del batch) ---
+
+  GET http://localhost:8080/api/v1/transacciones/resumen-diario?size=5
+
+  HTTP 200   (0.012250 s)
+
+  {"contenido":[{"fecha":"2024-12-30","totalTransacciones":6,"montoTotal":7300.00,"montoPromedio":1216.67,"montoMaximo":3000.00,"cantidadAnomalias":2},{"fecha":"2024-12-29","totalTransacciones":2,"montoTotal":500.00,"montoPromedio":250.00,"montoMaximo":700.00,"cantidadAnomalias":1},{"fecha":"2024-12-28","totalTransacciones":1,"montoTotal":0.00,"montoPromedio":0.00,"montoMaximo":0.00,"cantidadAnomalias":1},{"fecha":"2024-12-27","totalTransacciones":1,"montoTotal":1200.00,"montoPromedio":1200.00,"montoMaximo":1200.00,"cantidadAnomalias":0},{"fecha":"2024-12-26","totalTransacciones":3,"montoTotal":800.00,"montoPromedio":266.67,"montoMaximo":1200.00,"cantidadAnomalias":2}],"pagina":0,"tamano":5,"totalElementos":322,"totalPaginas":65,"ultima":false}
+
+###########################################################################
+ MANEJO DE ERRORES
+###########################################################################
+
+--- Cuenta inexistente ---
+
+  GET http://localhost:8080/api/v1/cuentas/999
+
+  HTTP 404   (0.013616 s)
+
+  {"estado":404,"error":"RECURSO_NO_ENCONTRADO","mensaje":"no existe la cuenta 999","detalles":[],"ruta":"/api/v1/cuentas/999","momento":"2026-09-14T22:03:09.4683437"}
+
+  NOTA: Responde 404 con un objeto de error estructurado, no un stacktrace.
