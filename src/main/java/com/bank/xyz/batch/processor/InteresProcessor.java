@@ -1,45 +1,91 @@
 package com.bank.xyz.batch.processor;
 
-import com.bank.xyz.batch.model.Cuenta;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.bank.xyz.batch.config.InteresProperties;
+import com.bank.xyz.batch.dto.InteresCsv;
+import com.bank.xyz.batch.exception.RegistroInvalidoException;
+import com.bank.xyz.batch.model.EstadoRegistro;
+import com.bank.xyz.batch.model.InteresCalculado;
+import com.bank.xyz.batch.util.NumeroParser;
+import com.bank.xyz.batch.util.TextoNormalizador;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.stereotype.Component;
 
-@Component
-public class InteresProcessor implements ItemProcessor<Cuenta, Cuenta> {
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.StringJoiner;
 
-    // 🔽 AGREGAR ESTA LÍNEA 🔽
-    private static final Logger log = LoggerFactory.getLogger(InteresProcessor.class);
+
+@Component
+public class InteresProcessor implements ItemProcessor<InteresCsv, InteresCalculado> {
+
+    private static final int EDAD_MINIMA = 18;
+    private static final int EDAD_MAXIMA = 120;
+    private static final BigDecimal MESES_DEL_ANIO = new BigDecimal("12");
+    private static final BigDecimal CIEN = new BigDecimal("100");
+
+    private final InteresProperties tasas;
+
+    public InteresProcessor(InteresProperties tasas) {
+        this.tasas = tasas;
+    }
 
     @Override
-    public Cuenta process(Cuenta cuenta) throws Exception {
-        StringBuilder errores = new StringBuilder();
+    public InteresCalculado process(InteresCsv fila) {
+        StringJoiner observaciones = new StringJoiner("; ");
+        EstadoRegistro estado = EstadoRegistro.VALIDO;
 
-        // Validar saldo
-        if (cuenta.getSaldo() == null) {
-            errores.append("Saldo nulo; ");
-            cuenta.setSaldo(0.0);
+        Integer cuentaId = NumeroParser.aEntero(fila.getCuentaId());
+        if (cuentaId == null) {
+            throw new RegistroInvalidoException("cuenta_id ausente o no numerico", fila.toString());
         }
 
-        // Validar edad
-        if (cuenta.getEdad() == null || cuenta.getEdad() < 0 || cuenta.getEdad() > 150) {
-            errores.append("Edad inválida: ").append(cuenta.getEdad()).append("; ");
-            cuenta.setEdad(0);
+        BigDecimal saldo = NumeroParser.aImporte(fila.getSaldo());
+        if (saldo == null) {
+            throw new RegistroInvalidoException(
+                    "saldo ausente: no hay capital sobre el cual calcular interes", fila.toString());
         }
 
-        // Validar tipo
-        String tipo = cuenta.getTipo();
-        if (tipo == null || tipo.isEmpty() || tipo.equals("-1") || 
-            tipo.equalsIgnoreCase("unknown") || tipo.equalsIgnoreCase("desconocido")) {
-            errores.append("Tipo inválido: ").append(tipo).append("; ");
-            cuenta.setTipo("unknown");
+        String tipo = TextoNormalizador.normalizar(fila.getTipo());
+        BigDecimal tasaAnual = tasas.tasaDe(tipo);
+        if (tasaAnual == null) {
+            throw new RegistroInvalidoException(
+                    "tipo de cuenta no reconocido (" + fila.getTipo() + "): sin tasa aplicable",
+                    fila.toString());
         }
 
-        if (!errores.isEmpty()) {
-            log.warn("Cuenta ID {} tiene errores: {}", cuenta.getCuentaId(), errores);
+        Integer edad = NumeroParser.aEntero(fila.getEdad());
+        if (edad == null) {
+            estado = EstadoRegistro.CORREGIDO;
+            observaciones.add("edad ausente");
+        } else if (edad < EDAD_MINIMA || edad > EDAD_MAXIMA) {
+            estado = EstadoRegistro.CORREGIDO;
+            observaciones.add("edad fuera de rango (" + edad + ")");
+            edad = null;
         }
 
-        return cuenta;
+        String nombre = fila.getNombre();
+        if (TextoNormalizador.vacio(nombre) || "unknown".equals(TextoNormalizador.normalizar(nombre))) {
+            estado = EstadoRegistro.CORREGIDO;
+            observaciones.add("titular sin identificar");
+            nombre = "SIN IDENTIFICAR";
+        }
+
+        BigDecimal interesMensual = saldo
+                .multiply(tasaAnual)
+                .divide(CIEN, 10, RoundingMode.HALF_UP)
+                .divide(MESES_DEL_ANIO, 2, RoundingMode.HALF_UP);
+
+        InteresCalculado calculo = new InteresCalculado();
+        calculo.setCuentaId(cuentaId);
+        calculo.setNombre(nombre);
+        calculo.setTipoCuenta(tipo);
+        calculo.setEdad(edad);
+        calculo.setSaldoInicial(saldo.setScale(2, RoundingMode.HALF_UP));
+        calculo.setTasaAnual(tasaAnual);
+        calculo.setInteresMensual(interesMensual);
+        calculo.setSaldoFinal(saldo.add(interesMensual).setScale(2, RoundingMode.HALF_UP));
+        calculo.setEstado(estado);
+        calculo.setObservaciones(observaciones.length() == 0 ? null : observaciones.toString());
+        return calculo;
     }
 }
