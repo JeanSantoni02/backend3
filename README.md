@@ -1,43 +1,47 @@
 # Banco XYZ — Modernización del sistema legacy
 
-Proyecto académico de modernización del sistema legacy del Banco XYZ, en dos etapas:
+Proyecto de la asignatura Desarrollo Backend III (PBY2203). Parte de los procesos
+legacy del Banco XYZ y los lleva a una arquitectura de microservicios en la nube,
+resiliente, segura y orientada a eventos.
 
-- **Semana 3:** migrar tres procesos batch a **Spring Batch**, con persistencia en PostgreSQL, tolerancia a fallos y escalado por particionamiento.
-- **Semana 5:** exponer esos datos mediante el patrón **Backend for Frontend (BFF)**, con un backend dedicado para cada tipo de cliente.
-
-Los datos de entrada son los archivos oficiales de [KariVillagran/bank_legacy_data](https://github.com/KariVillagran/bank_legacy_data), carpeta `data/semana_3` (1.000 filas por archivo).
+Datos de origen: [KariVillagran/bank_legacy_data](https://github.com/KariVillagran/bank_legacy_data), carpeta `data/semana_3`.
 
 ---
 
 ## Arquitectura
 
 ```
-   Navegador          App móvil         Cajero automático
-       │                  │                     │
-       ▼                  ▼                     ▼
-   ┌────────┐        ┌──────────┐         ┌──────────┐
-   │bff-web │        │bff-mobile│         │ bff-atm  │
-   │ :8081  │        │  :8082   │         │  :8083   │
-   └────┬───┘        └────┬─────┘         └────┬─────┘
-        │                 │                    │
-        └─────────────────┼────────────────────┘
-                          ▼
-                 ┌─────────────────┐
-                 │ banco-core-api  │  único con acceso a la base
-                 │     :8080       │
-                 └────────┬────────┘
-                          ▼
-                 ┌─────────────────┐
-                 │   PostgreSQL    │
-                 │ bank_legacy_db  │
-                 └────────┬────────┘
-                          ▲
-                 ┌────────┴────────┐
-                 │ batch-migration │  carga los datos desde los CSV
-                 └─────────────────┘
-```
+   Navegador            App móvil           Cajero automático
+       │                    │                      │
+       ▼                    ▼                      ▼
+  ┌─────────┐         ┌───────────┐          ┌──────────┐
+  │ bff-web │         │bff-mobile │          │ bff-atm  │
+  │  :8081  │         │   :8082   │          │  :8083   │
+  └────┬────┘         └─────┬─────┘          └────┬─────┘
+       │                    │                     │  circuit breaker + retry
+       │   token OAuth2     │                     │
+       └────────────────────┼─────────────────────┘
+                            ▼
+                   ┌──────────────────┐
+                   │  banco-core-api  │──── JDBC ───► PostgreSQL
+                   │      :8080       │
+                   │ (resource server)│
+                   └────────┬─────────┘
+                            │ publica evento
+                            ▼
+                 ┌──────────────────────┐
+                 │  ActiveMQ Artemis    │  tópico
+                 │  banco.eventos.*     │  :61616
+                 └──────────┬───────────┘
+                            ▼
+                 ┌──────────────────────┐
+                 │servicio-notificaciones│
+                 │        :8084          │
+                 └──────────────────────┘
 
-El batch llena la base una vez. El servicio de dominio es el único que la consulta. Los tres BFF dan forma a esos datos según lo que necesita cada cliente.
+  Plataforma:  config-server :8888   eureka-server :8761   auth-server :9000
+  Carga inicial de datos:  batch-migration (Spring Batch)
+```
 
 ---
 
@@ -45,29 +49,87 @@ El batch llena la base una vez. El servicio de dominio es el único que la consu
 
 | Módulo | Puerto | Qué hace |
 |---|---|---|
-| [`batch-migration`](batch-migration/) | — | Tres jobs de Spring Batch que cargan y validan los CSV |
+| `batch-migration` | — | Tres jobs de Spring Batch que cargan y validan los CSV |
+| `config-server` | 8888 | Configuración centralizada (Spring Cloud Config) |
+| `eureka-server` | 8761 | Service Discovery |
+| `auth-server` | 9000 | Servidor de autorización OAuth2 |
 | `banco-core-api` | 8080 | Servicio de dominio. Único con acceso a PostgreSQL |
-| `bff-web` | 8081 | BFF del portal: respuestas completas y agregadas |
-| `bff-mobile` | 8082 | BFF de la app: respuestas mínimas |
-| `bff-atm` | 8083 | BFF de cajeros: operaciones críticas, con autenticación |
+| `servicio-notificaciones` | 8084 | Consumidor de eventos de transacción |
+| `bff-web` | 8081 | BFF del portal |
+| `bff-mobile` | 8082 | BFF de la app móvil |
+| `bff-atm` | 8083 | BFF de cajeros, con tolerancia a fallos |
 
 ---
 
 ## Cómo ejecutarlo
 
-### Requisitos
+### Con Docker (recomendado)
 
-- JDK 17
-- Maven 3.9 (o el que trae NetBeans)
-- PostgreSQL con la base `bank_legacy_db`
+Levanta todo: base de datos, broker, plataforma y microservicios.
 
-```sql
-CREATE DATABASE bank_legacy_db;
+```bash
+docker compose up -d --build
 ```
+
+```bash
+docker compose ps
+```
+
+```bash
+docker compose logs -f banco-core-api
+```
+
+Para detener y borrar los volúmenes:
+
+```bash
+docker compose down -v
+```
+
+### Sin Docker
+
+Requiere JDK 17, Maven y PostgreSQL con la base `bank_legacy_db`.
+
+```bash
+mvn clean package
+```
+
+Carga inicial de los datos (una sola vez):
+
+```bash
+java -jar batch-migration/target/batch-migration-1.0-SNAPSHOT.jar --job=todos
+```
+
+Luego, cada servicio en su terminal y **en este orden**:
+
+```bash
+java -jar config-server/target/config-server-1.0-SNAPSHOT.jar
+```
+
+```bash
+java -jar eureka-server/target/eureka-server-1.0-SNAPSHOT.jar
+```
+
+```bash
+java -jar auth-server/target/auth-server-1.0-SNAPSHOT.jar
+```
+
+```bash
+java -jar banco-core-api/target/banco-core-api-1.0-SNAPSHOT.jar
+```
+
+```bash
+java -jar servicio-notificaciones/target/servicio-notificaciones-1.0-SNAPSHOT.jar
+```
+
+Después los tres BFF (`bff-web`, `bff-mobile`, `bff-atm`).
+
+Sin Docker, `banco-core-api` levanta un broker Artemis **embebido** que publica un
+puerto TCP en 61616, de modo que el servicio de notificaciones se conecta igual.
+En Docker se usa el contenedor de Artemis.
 
 ### Credenciales
 
-No van en el código. Se leen de variables de entorno:
+No están en el código. Se leen de variables de entorno:
 
 ```bash
 setx DB_URL "jdbc:postgresql://localhost:5432/bank_legacy_db"
@@ -75,212 +137,161 @@ setx DB_USER "postgres"
 setx DB_PASSWORD "tu_password"
 ```
 
-### 1. Compilar todo
+Los secretos de los clientes OAuth2 (`BFF_WEB_SECRET`, `BFF_MOBILE_SECRET`,
+`BFF_ATM_SECRET`) y las claves de terminal del cajero tienen valores por defecto
+solo para desarrollo.
 
-```bash
-mvn clean package
-```
+---
 
-### 2. Cargar los datos (una sola vez)
+## Probar el sistema
 
-```bash
-java -jar batch-migration/target/batch-migration-1.0-SNAPSHOT.jar --job=todos
-```
+Paneles:
 
-Crea las tablas y carga los tres archivos. Es idempotente: se puede repetir sin duplicar.
-
-### 3. Levantar los servicios
-
-Cada uno en su propia terminal, **empezando por el servicio de dominio**:
-
-```bash
-java -jar banco-core-api/target/banco-core-api-1.0-SNAPSHOT.jar
-```
-
-```bash
-java -jar bff-web/target/bff-web-1.0-SNAPSHOT.jar
-```
-
-```bash
-java -jar bff-mobile/target/bff-mobile-1.0-SNAPSHOT.jar
-```
-
-```bash
-java -jar bff-atm/target/bff-atm-1.0-SNAPSHOT.jar
-```
-
-### 4. Probar
-
-Documentación interactiva de cada servicio:
-
+- http://localhost:8761 — registro de Eureka
 - http://localhost:8080/swagger-ui.html — servicio de dominio
 - http://localhost:8081/swagger-ui.html — BFF Web
 - http://localhost:8082/swagger-ui.html — BFF Móvil
 - http://localhost:8083/swagger-ui.html — BFF Cajeros
+- http://localhost:8084/swagger-ui.html — Notificaciones
+- http://localhost:8083/actuator/circuitbreakers — estado del circuito
 
-Las cuentas cargadas van de la 101 a la 150. Las que tienen movimientos y estado anual son de la 101 a la 120.
-
-```bash
-curl http://localhost:8081/bff/web/cuentas/101/panel
-```
+Obtener un token:
 
 ```bash
-curl http://localhost:8082/bff/movil/cuentas/101
+curl -u bff-atm:secreto-bff-atm -d "grant_type=client_credentials&scope=cuentas.leer retiros.escribir" http://localhost:9000/oauth2/token
 ```
+
+Retiro que dispara un evento:
 
 ```bash
-curl -H "X-ATM-Terminal: ATM-001" -H "X-ATM-Key: clave-demo-001" http://localhost:8083/bff/atm/cuentas/101/saldo
+curl -X POST http://localhost:8083/bff/atm/cuentas/101/retiro -H "Content-Type: application/json" -H "X-ATM-Terminal: ATM-001" -H "X-ATM-Key: clave-demo-001" -d "{\"monto\":5000,\"referencia\":\"TICKET-001\"}"
 ```
 
-Retiro desde el cajero (idempotente por el campo `referencia`):
+Ver la notificación que generó ese evento:
 
 ```bash
-curl -X POST http://localhost:8083/bff/atm/cuentas/101/retiro -H "Content-Type: application/json" -H "X-ATM-Terminal: ATM-001" -H "X-ATM-Key: clave-demo-001" -d "{\"monto\":10000,\"referencia\":\"TICKET-001\"}"
+curl http://localhost:8084/api/v1/notificaciones
 ```
 
-> Las claves `clave-demo-001` y `clave-demo-002` son solo para probar en local. Se sobrescriben con las variables `ATM_001_KEY` y `ATM_002_KEY`.
+---
 
-### Pruebas
+## Configuración centralizada
+
+Ningún microservicio guarda la configuración de negocio en su propio jar. El
+`config-server` la sirve desde `config-server/src/main/resources/config-repo/`:
+
+| Archivo | Para quién |
+|---|---|
+| `application.yml` | Común a todos: Eureka, actuator, logging |
+| `banco-core-api.yml` | Base de datos, broker, issuer OAuth2, tópico de eventos |
+| `bff-atm.yml` | Umbrales del circuit breaker, reintentos y límites del cajero |
+| `servicio-notificaciones.yml` | Broker y tópico a consumir |
+
+Cambiar un umbral del circuit breaker no requiere recompilar el BFF: se edita el
+`config-repo`, se reinicia el config server y el microservicio toma el valor nuevo
+al arrancar.
+
+---
+
+## Seguridad
+
+El `auth-server` emite tokens JWT con el flujo **client_credentials**: los BFF son
+clientes de máquina, no hay un usuario final que dé consentimiento.
+
+`banco-core-api` actúa como **resource server** y autoriza por scope:
+
+| Cliente | Scopes | Qué puede hacer |
+|---|---|---|
+| `bff-web` | `cuentas.leer`, `transacciones.leer` | Solo lectura |
+| `bff-mobile` | `cuentas.leer` | Solo lectura de cuentas |
+| `bff-atm` | `cuentas.leer`, `retiros.escribir` | Único que puede retirar |
+
+El endpoint de retiro exige `SCOPE_retiros.escribir`, así que aunque el BFF móvil
+conociera la ruta, su token no se lo permitiría.
+
+El BFF de cajeros suma una segunda capa: cada terminal se identifica con sus
+cabeceras `X-ATM-Terminal` y `X-ATM-Key`, validadas en tiempo constante.
+
+---
+
+## Tolerancia a fallos
+
+`bff-atm` protege sus llamadas al dominio con Resilience4j:
+
+| Mecanismo | Configuración |
+|---|---|
+| Circuit breaker | Abre con 50 % de fallos sobre una ventana de 10 llamadas, mínimo 5 |
+| Espera en abierto | 20 s antes de permitir la siguiente prueba |
+| Reintentos | 3 intentos con espera creciente desde 400 ms |
+| Límite de tiempo | 8 s |
+
+Los rechazos de negocio (saldo insuficiente, cuenta inexistente) están en
+`ignore-exceptions`: son respuestas correctas del servicio, no fallas, y no deben
+abrir el circuito.
+
+El orden de los aspectos está fijado para que **el circuito envuelva al reintento**:
+primero se reintenta la llamada y solo si la operación completa falla cuenta como
+fallo del circuito. Con el orden por defecto es al revés.
+
+Reintentar un retiro es seguro porque el dominio lo trata de forma idempotente: la
+misma `referencia` no debita dos veces.
+
+---
+
+## Arquitectura de eventos
+
+Un retiro confirmado publica un evento en el tópico `banco.eventos.transaccion`.
+El servicio de notificaciones lo consume de forma asíncrona.
+
+El detalle del patrón elegido, las alternativas descartadas, el diagrama y las
+garantías están en [docs/arquitectura-eventos.md](docs/arquitectura-eventos.md).
+
+Tres decisiones que vale la pena destacar:
+
+- El evento sale **después** del commit, para no avisar de un retiro que podría revertirse.
+- Publicar no puede tumbar la operación: un fallo del broker se registra y se sigue.
+- El consumidor descarta reentregas por `eventoId`, así un retiro nunca genera dos avisos.
+
+---
+
+## Docker
+
+Cada microservicio tiene su `Dockerfile` en dos etapas: compila con Maven y ejecuta
+sobre un JRE, con un usuario sin privilegios. La caché del repositorio local se
+comparte entre imágenes con `--mount=type=cache`.
+
+El `docker-compose.yml` orquesta los diez componentes con `healthcheck` y
+`depends_on: condition: service_healthy`, de modo que los microservicios no
+arrancan antes de que su infraestructura esté lista.
+
+---
+
+## Pruebas
 
 ```bash
 mvn test
 ```
 
-53 pruebas: 32 del batch y 21 de los servicios REST.
-
----
-
-## Endpoints
-
-### banco-core-api (8080) — genérico, lo consumen los BFF
-
-| Método | Ruta |
-|---|---|
-| GET | `/api/v1/cuentas` |
-| GET | `/api/v1/cuentas/{id}` |
-| GET | `/api/v1/cuentas/{id}/saldo` |
-| GET | `/api/v1/cuentas/{id}/movimientos?anio=` |
-| GET | `/api/v1/cuentas/{id}/movimientos/ultimos?cantidad=` |
-| GET | `/api/v1/cuentas/{id}/estados-anuales` |
-| GET | `/api/v1/cuentas/{id}/estados-anuales/{anio}` |
-| GET | `/api/v1/cuentas/{id}/intereses` |
-| GET | `/api/v1/transacciones/resumen-diario?desde=&hasta=` |
-| POST | `/api/v1/cuentas/{id}/retiros` |
-
-### bff-web (8081)
-
-| Método | Ruta | Devuelve |
-|---|---|---|
-| GET | `/bff/web/cuentas/{id}/panel` | Todo en una llamada |
-| GET | `/bff/web/cuentas` | Grilla paginada |
-
-### bff-mobile (8082)
-
-| Método | Ruta | Devuelve |
-|---|---|---|
-| GET | `/bff/movil/cuentas/{id}` | Saldo y últimos 5 movimientos |
-| GET | `/bff/movil/cuentas/{id}/saldo` | Solo el saldo |
-
-### bff-atm (8083) — requiere `X-ATM-Terminal` y `X-ATM-Key`
-
-| Método | Ruta | Devuelve |
-|---|---|---|
-| GET | `/bff/atm/cuentas/{id}/saldo` | Saldo y máximo retirable |
-| POST | `/bff/atm/cuentas/{id}/retiro` | Comprobante del retiro |
-
----
-
-## Qué diferencia a cada BFF
-
-Tener tres aplicaciones no es el punto del patrón. El punto es que cada una tome decisiones distintas:
-
-| | bff-web | bff-mobile | bff-atm |
-|---|---|---|---|
-| Respuesta | Todo agregado | Solo lo esencial | Solo lo de la operación |
-| Nombres de campo | Descriptivos | Abreviados | Descriptivos |
-| Nulos | Se serializan | Se omiten | Se serializan |
-| Llamadas al dominio | 4 en paralelo | 2 | 1 |
-| Timeout de lectura | 5 s | 3 s | 8 s |
-| Autenticación | No | No | Por terminal |
-
-Para la misma cuenta, medido:
-
-| BFF | Respuesta | Bytes |
-|---|---|---:|
-| Web | Panel completo | 3.826 |
-| Móvil | Resumen | 418 |
-| ATM | Saldo | 133 |
-| Móvil | Solo saldo | 27 |
-
-**El móvil transmite un 89 % menos que la web.**
-
-El razonamiento completo —estrategias evaluadas, seguridad del cajero, integridad del retiro, códigos HTTP y resiliencia— está en [PROPUESTA-TECNICA-BFF.md](PROPUESTA-TECNICA-BFF.md).
-
----
-
-## Modelo de datos
-
-| Tabla | La llena | Contenido |
-|---|---|---|
-| `transacciones` | batch | Detalle validado de transacciones |
-| `resumen_diario` | batch | Totales por día |
-| `intereses_calculados` | batch | Interés calculado por registro |
-| `cuentas` | batch | Maestro por cuenta con saldo final |
-| `movimientos_anuales` | batch | Movimientos normalizados |
-| `estado_cuenta_anual` | batch | Informe por cuenta y año |
-| `errores_batch` | batch | Bitácora de registros descartados |
-| `operaciones_atm` | core-api | Retiros, con clave de idempotencia |
-
 ---
 
 ## Evidencia
 
-Todo está en [`evidencias/`](evidencias/README.md), que explica cada archivo y cómo regenerarlo.
-
-| Archivo | Contenido |
+| Carpeta | Contenido |
 |---|---|
-| `01-ejecucion-1-particion.log` | Batch con 1 partición |
-| `02-ejecucion-4-particiones.log` | Batch con 4 particiones |
-| `03-verificacion-bd.txt` | 11 consultas SQL sobre el resultado |
-| [`04-comparacion-escalado.md`](evidencias/04-comparacion-escalado.md) | Comparación de tiempos del batch |
-| `05-evidencia-bff.txt` | Los tres BFF, seguridad, retiro y resiliencia |
-| `06-apis-consola/` | Un archivo por API: petición, código HTTP, tiempo y respuesta |
-| `07-capturas/` | 12 capturas de Swagger UI y de las respuestas |
-| `Evidencia-de-ejecucion-Banco-XYZ.pdf` | Informe de 13 páginas con las capturas y las salidas de consola |
+| [`evidencias/08-microservicios/`](evidencias/08-microservicios/) | Config server, Eureka, OAuth2, eventos JMS, resiliencia y los tres BFF |
+| [`evidencias/06-apis-consola/`](evidencias/06-apis-consola/) | Las cuatro APIs del patrón BFF |
+| `evidencias/01` a `04` | Ejecución del batch y comparación de escalado |
 
-La evidencia se regenera con dos scripts, con los servicios levantados:
+Se regenera con los servicios levantados:
 
 ```bash
-powershell -ExecutionPolicy Bypass -File evidencias\generar-evidencia-apis.ps1
+powershell -ExecutionPolicy Bypass -File evidencias\generar-evidencia-microservicios.ps1
 ```
-
-```bash
-powershell -ExecutionPolicy Bypass -File evidencias\generar-capturas.ps1
-```
-
-Y el informe PDF, que junta ambas cosas:
-
-```bash
-python evidencias\generar-informe-pdf.py
-```
-
-Resultado de la carga:
-
-| Tabla | Filas |
-|---|---:|
-| `transacciones` | 785 |
-| `resumen_diario` | 322 |
-| `intereses_calculados` | 526 |
-| `cuentas` | 50 |
-| `movimientos_anuales` | 952 |
-| `estado_cuenta_anual` | 20 |
-| `errores_batch` | 737 |
-
-De 3.000 filas leídas, 737 se descartaron por datos inválidos y quedaron registradas con su motivo. El detalle de las reglas está en el [README del módulo batch](batch-migration/README.md).
 
 ---
 
 ## Documentación
 
-- [Semana 3 — detalle del batch](batch-migration/README.md)
-- [Semana 5 — propuesta técnica del BFF](PROPUESTA-TECNICA-BFF.md)
+- [Arquitectura de eventos](docs/arquitectura-eventos.md)
+- [Detalle del batch](batch-migration/README.md)
+- [Propuesta técnica del patrón BFF](PROPUESTA-TECNICA-BFF.md)

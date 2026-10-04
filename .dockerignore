@@ -1,0 +1,7 @@
+**/target/
+.git/
+.gitignore
+evidencias/
+nbproject/
+*.md
+!README.md

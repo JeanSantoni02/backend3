@@ -1,0 +1,205 @@
+# Orquestacion completa del Banco XYZ.
+# Levanta infraestructura (base de datos y broker), los servicios de plataforma
+# (configuracion, descubrimiento y autorizacion) y los microservicios.
+#
+#   docker compose up -d --build
+#   docker compose logs -f banco-core-api
+#   docker compose down -v
+
+name: banco-xyz
+
+services:
+
+  # ------------------------------------------------------- infraestructura --
+  postgres:
+    image: postgres:16-alpine
+    container_name: banco-postgres
+    environment:
+      POSTGRES_DB: bank_legacy_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "5432:5432"
+    volumes:
+      - datos-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bank_legacy_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [banco]
+
+  artemis:
+    image: apache/activemq-artemis:2.31.2
+    container_name: banco-artemis
+    environment:
+      ARTEMIS_USER: ${ARTEMIS_USER:-artemis}
+      ARTEMIS_PASSWORD: ${ARTEMIS_PASSWORD:-artemis}
+      ANONYMOUS_LOGIN: "true"
+    ports:
+      - "61616:61616"
+      - "8161:8161"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8161 >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [banco]
+
+  # ---------------------------------------------- servicios de plataforma --
+  config-server:
+    build:
+      context: .
+      dockerfile: config-server/Dockerfile
+    container_name: banco-config
+    ports:
+      - "8888:8888"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8888/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [banco]
+
+  eureka-server:
+    build:
+      context: .
+      dockerfile: eureka-server/Dockerfile
+    container_name: banco-eureka
+    ports:
+      - "8761:8761"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8761/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [banco]
+
+  auth-server:
+    build:
+      context: .
+      dockerfile: auth-server/Dockerfile
+    container_name: banco-auth
+    environment:
+      AUTH_ISSUER: http://auth-server:9000
+      BFF_WEB_SECRET: ${BFF_WEB_SECRET:-secreto-bff-web}
+      BFF_MOBILE_SECRET: ${BFF_MOBILE_SECRET:-secreto-bff-mobile}
+      BFF_ATM_SECRET: ${BFF_ATM_SECRET:-secreto-bff-atm}
+    ports:
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [banco]
+
+  # ------------------------------------------------------- microservicios --
+  banco-core-api:
+    build:
+      context: .
+      dockerfile: banco-core-api/Dockerfile
+    container_name: banco-core-api
+    environment:
+      CONFIG_URL: http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      AUTH_URL: http://auth-server:9000
+      DB_URL: jdbc:postgresql://postgres:5432/bank_legacy_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      # Contra el broker externo, no el embebido que se usa en local
+      ARTEMIS_MODE: native
+      ARTEMIS_EMBEDDED: "false"
+      ARTEMIS_URL: tcp://artemis:61616
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres: { condition: service_healthy }
+      artemis: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      auth-server: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    networks: [banco]
+
+  servicio-notificaciones:
+    build:
+      context: .
+      dockerfile: servicio-notificaciones/Dockerfile
+    container_name: banco-notificaciones
+    environment:
+      CONFIG_URL: http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      ARTEMIS_MODE: native
+      ARTEMIS_URL: tcp://artemis:61616
+    ports:
+      - "8084:8084"
+    depends_on:
+      artemis: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+    networks: [banco]
+
+  bff-web:
+    build:
+      context: .
+      dockerfile: bff-web/Dockerfile
+    container_name: banco-bff-web
+    environment:
+      CONFIG_URL: http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      AUTH_URL: http://auth-server:9000
+      CORE_API_URL: http://banco-core-api:8080
+      BFF_WEB_SECRET: ${BFF_WEB_SECRET:-secreto-bff-web}
+    ports:
+      - "8081:8081"
+    depends_on:
+      banco-core-api: { condition: service_healthy }
+    networks: [banco]
+
+  bff-mobile:
+    build:
+      context: .
+      dockerfile: bff-mobile/Dockerfile
+    container_name: banco-bff-mobile
+    environment:
+      CONFIG_URL: http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      AUTH_URL: http://auth-server:9000
+      CORE_API_URL: http://banco-core-api:8080
+      BFF_MOBILE_SECRET: ${BFF_MOBILE_SECRET:-secreto-bff-mobile}
+    ports:
+      - "8082:8082"
+    depends_on:
+      banco-core-api: { condition: service_healthy }
+    networks: [banco]
+
+  bff-atm:
+    build:
+      context: .
+      dockerfile: bff-atm/Dockerfile
+    container_name: banco-bff-atm
+    environment:
+      CONFIG_URL: http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      AUTH_URL: http://auth-server:9000
+      CORE_API_URL: http://banco-core-api:8080
+      BFF_ATM_SECRET: ${BFF_ATM_SECRET:-secreto-bff-atm}
+      ATM_001_KEY: ${ATM_001_KEY:-clave-demo-001}
+      ATM_002_KEY: ${ATM_002_KEY:-clave-demo-002}
+    ports:
+      - "8083:8083"
+    depends_on:
+      banco-core-api: { condition: service_healthy }
+    networks: [banco]
+
+volumes:
+  datos-postgres:
+
+networks:
+  banco:
+    driver: bridge

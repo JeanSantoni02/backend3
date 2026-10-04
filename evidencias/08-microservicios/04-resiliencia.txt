@@ -1,0 +1,49 @@
+﻿===========================================================================
+ SEMANA 7 - Tolerancia a fallos con Resilience4j
+ Generado: 2026-10-04 15:57:08
+===========================================================================
+
+bff-atm protege sus llamadas al dominio con circuit breaker, reintentos y
+limite de tiempo. El estado del circuito se observa por actuator.
+
+--- Estado del circuito en operacion normal ---
+
+  GET http://localhost:8083/actuator/circuitbreakers
+
+  HTTP 200   (0.013762 s)
+
+  {"circuitBreakers":{"coreApi":{"failureRate":"-1.0%","slowCallRate":"-1.0%","failureRateThreshold":"50.0%","slowCallRateThreshold":"100.0%","bufferedCalls":4,"failedCalls":0,"slowCalls":0,"slowFailedCalls":0,"notPermittedCalls":0,"state":"CLOSED"}}}
+
+  NOTA: CLOSED: las llamadas pasan al servicio de dominio.
+
+--- Consulta de saldo correcta ---
+
+  GET http://localhost:8083/bff/atm/cuentas/101/saldo
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+
+  HTTP 200   (0.033880 s)
+
+  {"cuenta":101,"saldoDisponible":98814.17,"maximoRetirable":98000.00,"denominacion":1000,"consultadoEn":"2026-10-04T15:57:08.1793453"}
+
+--- Ciclo completo del circuit breaker ---
+
+  Para reproducirlo hay que detener banco-core-api, hacer seis consultas
+  de saldo, volver a levantarlo, esperar los 20 s de wait-duration y
+  consultar de nuevo. Transiciones observadas en la ejecucion de prueba:
+
+     CLOSED_TO_OPEN       tras 5 llamadas fallidas (umbral 50 %)
+     OPEN_TO_HALF_OPEN    al reintentar despues de la espera
+     HALF_OPEN_TO_CLOSED  tras 3 llamadas correctas
+
+  Con el circuito abierto el cajero recibe:
+     HTTP 503 {"codigo":"SIN_SERVICIO","entregarEfectivo":false}
+  y no entrega dinero.
+
+--- Eventos registrados del circuito ---
+
+  GET http://localhost:8083/actuator/circuitbreakerevents/coreApi
+
+  HTTP 200   (0.004197 s)
+
+  {"circuitBreakerEvents":[{"circuitBreakerName":"coreApi","type":"ERROR","creationTime":"2026-10-04T15:52:21.670470800-04:00[America/La_Paz]","errorMessage":"com.bank.xyz.bff.atm.error.CoreApiNoDisponibleException: sin conexion con el servicio de dominio","durationInMs":108,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"ERROR","creationTime":"2026-10-04T15:52:22.097531200-04:00[America/La_Paz]","errorMessage":"com.bank.xyz.bff.atm.error.CoreApiNoDisponibleException: sin conexion con el servicio de dominio","durationInMs":14,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"ERROR","creationTime":"2026-10-04T15:52:22.515013700-04:00[America/La_Paz]","errorMessage":"com.bank.xyz.bff.atm.error.CoreApiNoDisponibleException: sin conexion con el servicio de dominio","durationInMs":15,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"ERROR","creationTime":"2026-10-04T15:52:22.575439300-04:00[America/La_Paz]","errorMessage":"com.bank.xyz.bff.atm.error.CoreApiNoDisponibleException: sin conexion con el servicio de dominio","durationInMs":0,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"ERROR","creationTime":"2026-10-04T15:52:23.005286500-04:00[America/La_Paz]","errorMessage":"com.bank.xyz.bff.atm.error.CoreApiNoDisponibleException: sin conexion con el servicio de dominio","durationInMs":15,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"FAILURE_RATE_EXCEEDED","creationTime":"2026-10-04T15:52:23.005854400-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"STATE_TRANSITION","creationTime":"2026-10-04T15:52:23.008436600-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":"CLOSED_TO_OPEN"},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:23.411252-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:23.475395400-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:23.884835-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:24.291397900-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:24.357960800-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:24.768485800-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:25.173822100-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:25.238546100-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:25.653658600-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:26.058248900-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:26.125442500-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:26.529004600-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"NOT_PERMITTED","creationTime":"2026-10-04T15:52:26.945946400-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"STATE_TRANSITION","creationTime":"2026-10-04T15:53:06.453484400-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":"OPEN_TO_HALF_OPEN"},{"circuitBreakerName":"coreApi","type":"SUCCESS","creationTime":"2026-10-04T15:53:06.728251100-04:00[America/La_Paz]","errorMessage":null,"durationInMs":274,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"SUCCESS","creationTime":"2026-10-04T15:53:06.823532200-04:00[America/La_Paz]","errorMessage":null,"durationInMs":13,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"SUCCESS","creationTime":"2026-10-04T15:53:06.890938800-04:00[America/La_Paz]","errorMessage":null,"durationInMs":12,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"STATE_TRANSITION","creationTime":"2026-10-04T15:53:06.890938800-04:00[America/La_Paz]","errorMessage":null,"durationInMs":null,"stateTransition":"HALF_OPEN_TO_CLOSED"},{"circuitBreakerName":"coreApi","type":"SUCCESS","creationTime":"2026-10-04T15:53:06.958212400-04:00[America/La_Paz]","errorMessage":null,"durationInMs":9,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"SUCCESS","creationTime":"2026-10-04T15:53:07.035240500-04:00[America/La_Paz]","errorMessage":null,"durationInMs":10,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"SUCCESS","creationTime":"2026-10-04T15:57:01.882109600-04:00[America/La_Paz]","errorMessage":null,"durationInMs":343,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"SUCCESS","creationTime":"2026-10-04T15:57:05.023425200-04:00[America/La_Paz]","errorMessage":null,"durationInMs":22,"stateTransition":null},{"circuitBreakerName":"coreApi","type":"SUCCESS","creationTime":"2026-10-04T15:57:08.179345300-04:00[America/La_Paz]","errorMessage":null,"durationInMs":7,"stateTransition":null}]}

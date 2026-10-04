@@ -1,0 +1,41 @@
+﻿===========================================================================
+ Los tres BFF sobre la plataforma de microservicios
+ Generado: 2026-10-04 15:57:08
+===========================================================================
+
+Cada BFF obtiene su propio token con los scopes que le corresponden y consume
+el servicio de dominio a traves de la infraestructura de Spring Cloud.
+
+--- bff-web: panel completo ---
+
+  GET http://localhost:8081/bff/web/cuentas/101/panel?tamano=2
+
+  HTTP 200   (0.311036 s)
+
+  {"titular":{"cuentaId":101,"nombre":"Bob Johnson","tipoCuenta":"hipoteca","identificado":true},"resumen":{"saldoActual":98814.17,"interesAcumulado":814.17,"registrosProcesados":13,"actualizadoEn":"2026-10-04T15:57:01.718045"},"estadosAnuales":[{"anio":2024,"cantidadMovimientos":44,"totalDepositos":38000.00,"totalRetiros":10800.00,"totalCompras":12700.00,"totalPagos":1600.00,"saldoNeto":12900.00,"movimientosConAnomalia":1}],"intereses":{"tipoCuenta":"hipoteca","tasaAnual":2.50,"registros":13,"interesMensualTotal":814.17},"movimientos":{"items":[{"id":3050,"fecha":"2024-12-26","tipo":"deposito","monto":100.00,"descripcion":"SIN DESCRIPCION","estado":"CORREGIDO","observaciones":"monto negativo normalizado (origen: -100); descripcion ausente"},{"id":3457,"fecha":"2024-12-22","tipo":"deposito","monto":2500.00,"descripcion":"Ingreso navideño","estado":"VALIDO","observaciones":null}],"pagina":0,"tamano":2,"total":44,"totalPaginas":22,"ultima":false},"meta":{"generadoEn":"2026-10-04T15:57:08.5012888","milisegundos":247,"avisos":["Hay 1 movimiento(s) marcados como anomalia para revision."]}}
+
+--- bff-mobile: respuesta minima ---
+
+  GET http://localhost:8082/bff/movil/cuentas/101
+
+  HTTP 200   (0.180261 s)
+
+  {"id":101,"titular":"Bob Johnson","tipo":"hipoteca","saldo":98814.17,"ultimos":[{"f":"2024-12-26","t":"deposito","m":100.00,"d":"SIN DESCRIPCION"},{"f":"2024-12-22","t":"deposito","m":2500.00,"d":"Ingreso navideño"},{"f":"2024-11-24","t":"deposito","m":100.00,"d":"SIN DESCRIPCION"},{"f":"2024-11-23","t":"compra","m":1500.00,"d":"Compra en tienda"},{"f":"2024-11-22","t":"retiro","m":1000.00,"d":"SIN DESCRIPCION"}]}
+
+--- bff-atm: saldo con maximo retirable ---
+
+  GET http://localhost:8083/bff/atm/cuentas/101/saldo
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+
+  HTTP 200   (0.022808 s)
+
+  {"cuenta":101,"saldoDisponible":98814.17,"maximoRetirable":98000.00,"denominacion":1000,"consultadoEn":"2026-10-04T15:57:08.8290296"}
+
+--- bff-atm sin credencial de terminal ---
+
+  GET http://localhost:8083/bff/atm/cuentas/101/saldo
+
+  HTTP 401   (0.006587 s)
+
+  {"codigo":"NO_AUTORIZADO","mensaje":"terminal no autorizado"}

@@ -1,0 +1,61 @@
+﻿===========================================================================
+ SEMANA 7 - Arquitectura de eventos con JMS
+ Generado: 2026-10-04 15:57:01
+===========================================================================
+
+Un retiro confirmado publica un evento en el topico banco.eventos.transaccion.
+El servicio de notificaciones lo consume de forma asincrona y genera el aviso.
+
+--- Notificaciones antes del retiro ---
+
+  GET http://localhost:8084/api/v1/notificaciones/resumen
+
+  HTTP 200   (0.020409 s)
+
+  {"totalNotificaciones":2}
+
+--- Retiro desde el cajero ---
+
+  POST http://localhost:8083/bff/atm/cuentas/101/retiro
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+  body: {"monto":5000,"referencia":"EVID-20261004-155701"}
+
+  HTTP 200   (0.439465 s)
+
+  {"comprobante":"EVID-20261004-155701","cuenta":101,"montoEntregado":5000,"saldoResultante":98814.17,"terminal":"ATM-001","duplicado":false,"fechaHora":"2026-10-04T15:57:01.718045"}
+
+  NOTA: bff-atm pide el token, llama al dominio y este publica el evento tras confirmar el debito.
+
+--- Notificacion generada por el consumidor ---
+
+  GET http://localhost:8084/api/v1/notificaciones?cantidad=3
+
+  HTTP 200   (0.013225 s)
+
+  [{"eventoId":"EVID-20261004-155701","cuentaId":101,"titulo":"Retiro realizado","mensaje":"Se registro un retiro realizado por $5.000 en tu cuenta 101. Saldo disponible: $98.814.","canal":"ATM","recibidoEn":"2026-10-04T15:57:01.8263679"},{"eventoId":"IDEM-154039","cuentaId":102,"titulo":"Retiro realizado","mensaje":"Se registro un retiro realizado por $3.000 en tu cuenta 102. Saldo disponible: $115.812.","canal":"ATM","recibidoEn":"2026-10-04T15:40:39.4394913"},{"eventoId":"EVT-154019","cuentaId":101,"titulo":"Retiro realizado","mensaje":"Se registro un retiro realizado por $5.000 en tu cuenta 101. Saldo disponible: $103.814.","canal":"ATM","recibidoEn":"2026-10-04T15:40:20.2566465"}]
+
+  NOTA: El servicio de notificaciones nunca fue invocado directamente: reacciono al evento.
+
+--- Mismo retiro repetido (idempotencia) ---
+
+  POST http://localhost:8083/bff/atm/cuentas/101/retiro
+  X-ATM-Terminal: ATM-001
+  X-ATM-Key: clave-demo-001
+  body: {"monto":5000,"referencia":"EVID-20261004-155701"}
+
+  HTTP 200   (0.042290 s)
+
+  {"comprobante":"EVID-20261004-155701","cuenta":101,"montoEntregado":5000.00,"saldoResultante":98814.17,"terminal":"ATM-001","duplicado":true,"fechaHora":"2026-10-04T15:57:01.718045"}
+
+  NOTA: duplicado=true y el saldo no vuelve a bajar.
+
+--- El consumidor no duplico el aviso ---
+
+  GET http://localhost:8084/api/v1/notificaciones/resumen
+
+  HTTP 200   (0.020553 s)
+
+  {"totalNotificaciones":3}
+
+  NOTA: El evento repetido se descarta por su eventoId.

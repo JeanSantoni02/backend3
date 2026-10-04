@@ -1,0 +1,68 @@
+﻿===========================================================================
+ SEMANA 8 - Seguridad con OAuth2
+ Generado: 2026-10-04 15:57:00
+===========================================================================
+
+El servidor de autorizacion emite tokens JWT con el flujo client_credentials.
+banco-core-api actua como resource server y autoriza por scope.
+
+--- Metadatos del servidor de autorizacion ---
+
+  GET http://localhost:9000/.well-known/oauth-authorization-server
+
+  HTTP 200   (0.029233 s)
+
+  {"issuer":"http://localhost:9000","authorization_endpoint":"http://localhost:9000/oauth2/authorize","device_authorization_endpoint":"http://localhost:9000/oauth2/device_authorization","token_endpoint":"http://localhost:9000/oauth2/token","token_endpoint_auth_methods_supported":["client_secret_basic","client_secret_post","client_secret_jwt","private_key_jwt"],"jwks_uri":"http://localhost:9000/oauth2/jwks","response_types_supported":["code"],"grant_types_supported":["authorization_code","client_credentials","refresh_token","urn:ietf:params:oauth:grant-type:device_code"],"revocation_endpoint":"http://localhost:9000/oauth2/revoke","revocation_endpoint_auth_methods_supported":["client_secret_basic","client_secret_post","client_secret_jwt","private_key_jwt"],"introspection_endpoint":"http://localhost:9000/oauth2/introspect","introspection_endpoint_auth_methods_supported":["client_secret_basic","client_secret_post","client_secret_jwt","private_key_jwt"],"code_challenge_methods_supported":["S256"]}
+
+--- Token para bff-atm (client_credentials) ---
+
+  POST http://localhost:9000/oauth2/token
+  -u bff-atm:secreto-bff-atm
+  grant_type=client_credentials&scope=cuentas.leer retiros.escribir
+
+  HTTP 200   (0.090798 s)
+
+  {"access_token":"eyJraWQiOiJiZjY5OTQwYS0zN2U5LTQ3OTUtYWMzOS1jNzAwZTgzZWUxZmQiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJiZmYtYXRtIiwiYXVkIjoiYmZmLWF0bSIsIm5iZiI6MTc5MTE0MzgyMSwic2NvcGUiOlsicmV0aXJvcy5lc2NyaWJpciIsImN1ZW50YXMubGVlciJdLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAiLCJleHAiOjE3OTExNDU2MjEsImlhdCI6MTc5MTE0MzgyMSwianRpIjoiMzBmYjYzMDYtMGU4ZS00OTk5LWE5NGQtMGU2NGQyNzdjYTliIn0.LLNiEgJam7PjWwOdw-iCWcsvbdLGuIWKjRWNSpbJPbv6XyRsCUCMraXkz-XObuTn3vZe3Z9MCN2fQPJhHFU_cQHWqC1E4uSdVYomPwY6FzNPNwYf9OoSV0ym3KadMwZ8tIVZEiuZ306Bmi1ySS2-wQz-yywvebO26UlRNag7DF0tNYGeTxZ6en_dBFKcPu1Hy7y-8ixnDpbcdnhQSeYu_MKq_gmhAJPwErTtKYsxMyKIeVCnNjGwk0jrUsbzXwZHVnO_FqZmjDNsYNMbzjz991T-gBGgTF_yuEIIPK78UoNo2J1tWJXquTXYQQHLY_uydmYntTX7F4Y_t4T-4Q1l1A","scope":"retiros.escribir cuentas.leer","token_type":"Bearer","expires_in":1800}
+
+  NOTA: El cajero obtiene scopes de lectura y de escritura de retiros.
+
+--- Token para bff-mobile (scope reducido) ---
+
+  POST http://localhost:9000/oauth2/token
+  -u bff-mobile:secreto-bff-mobile
+  grant_type=client_credentials&scope=cuentas.leer
+
+  HTTP 200   (0.091463 s)
+
+  {"access_token":"eyJraWQiOiJiZjY5OTQwYS0zN2U5LTQ3OTUtYWMzOS1jNzAwZTgzZWUxZmQiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJiZmYtbW9iaWxlIiwiYXVkIjoiYmZmLW1vYmlsZSIsIm5iZiI6MTc5MTE0MzgyMSwic2NvcGUiOlsiY3VlbnRhcy5sZWVyIl0sImlzcyI6Imh0dHA6Ly9sb2NhbGhvc3Q6OTAwMCIsImV4cCI6MTc5MTE0NTYyMSwiaWF0IjoxNzkxMTQzODIxLCJqdGkiOiI1Nzc1OGY0MC1kOWJiLTQyYjktODJkMC1iNDdiYTRmOWQzMTUifQ.P45eWgrrB_1QHdn00SyYNkSkfSnyFW9tKVd4bwBfIoNeYE93UmTF3IdQjIa9IGrXH46u6WxPLvaXS8z0HVreCIKYzE4pM3ZIMPMg2n7DMf7EVacR_OI8oxhZNPsrL-knIjeAI1b-Kn6DILQLpFLXHunrz6Xd7cEsC-04Sxj03ZsTPQ3wTTgE_k3MlQPOQp8aD9-CcHmpcaEKBdlfig7Rhl7Gns2sTh11bifxtV9rCKC_5n0-tqvZsm3sTT4La2TQq_1rfOAv_e5sFugADmieBj1vEwLdTl5s7z-_LkS89brxYQtc3JKCiZZ_51_FMKwpaEnghcz-6In7GMkRV60O7w","scope":"cuentas.leer","token_type":"Bearer","expires_in":1800}
+
+  NOTA: La app movil solo puede leer: no tiene el scope retiros.escribir.
+
+--- Acceso al recurso protegido SIN token ---
+
+  GET http://localhost:8080/api/v1/cuentas/101
+
+  HTTP 401   (0.006947 s)
+
+  
+
+  NOTA: Rechazado con 401 por el resource server.
+
+--- Acceso al recurso protegido CON token ---
+
+  GET http://localhost:8080/api/v1/cuentas/101
+  Authorization: Bearer eyJraWQiOiJiZjY5OTQwYS0zN2U5LTQ3OTUtYWMzOS1jNzAwZTgzZWUxZmQiLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJiZmYtYXRtIiwiYXVkIjoiYmZmLWF0bSIsIm5iZiI6MTc5MTE0MzgyMSwic2NvcGUiOlsicmV0aXJvcy5lc2NyaWJpciIsImN1ZW50YXMubGVlciJdLCJpc3MiOiJodHRwOi8vbG9jYWxob3N0OjkwMDAiLCJleHAiOjE3OTExNDU2MjEsImlhdCI6MTc5MTE0MzgyMSwianRpIjoiMzBmYjYzMDYtMGU4ZS00OTk5LWE5NGQtMGU2NGQyNzdjYTliIn0.LLNiEgJam7PjWwOdw-iCWcsvbdLGuIWKjRWNSpbJPbv6XyRsCUCMraXkz-XObuTn3vZe3Z9MCN2fQPJhHFU_cQHWqC1E4uSdVYomPwY6FzNPNwYf9OoSV0ym3KadMwZ8tIVZEiuZ306Bmi1ySS2-wQz-yywvebO26UlRNag7DF0tNYGeTxZ6en_dBFKcPu1Hy7y-8ixnDpbcdnhQSeYu_MKq_gmhAJPwErTtKYsxMyKIeVCnNjGwk0jrUsbzXwZHVnO_FqZmjDNsYNMbzjz991T-gBGgTF_yuEIIPK78UoNo2J1tWJXquTXYQQHLY_uydmYntTX7F4Y_t4T-4Q1l1A
+
+  HTTP 200   (0.013339 s)
+
+  {"cuentaId":101,"nombre":"Bob Johnson","tipo":"hipoteca","saldoFinal":103814.17,"interesTotal":814.17,"registrosProcesados":13,"actualizadoEn":"2026-10-04T15:40:20.100734"}
+
+--- Credenciales de cliente incorrectas ---
+
+  POST http://localhost:9000/oauth2/token
+  -u bff-atm:clave-equivocada
+  grant_type=client_credentials
+
+  HTTP 401   (0.068862 s)
+
+  {"error":"invalid_client"}
