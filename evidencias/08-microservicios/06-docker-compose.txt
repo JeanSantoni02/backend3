@@ -1,0 +1,316 @@
+﻿==============================================================
+ ORQUESTACION CON DOCKER COMPOSE
+ Generado: 2026-10-04 16:11:55
+==============================================================
+
+> docker compose version
+Docker Compose version v5.1.0
+
+--------------------------------------------------------------
+VALIDACION DEL ARCHIVO
+--------------------------------------------------------------
+> docker compose config --quiet
+(sin salida: el archivo es valido)
+
+> docker compose config --services
+  config-server
+  postgres
+  auth-server
+  eureka-server
+  artemis
+  servicio-notificaciones
+  banco-core-api
+  bff-atm
+  bff-mobile
+  bff-web
+
+> docker compose config --images
+  banco-xyz-bff-atm
+  banco-xyz-auth-server
+  banco-xyz-banco-core-api
+  banco-xyz-bff-web
+  banco-xyz-config-server
+  banco-xyz-servicio-notificaciones
+  banco-xyz-eureka-server
+  apache/activemq-artemis:2.31.2
+  postgres:16-alpine
+  banco-xyz-bff-mobile
+
+--------------------------------------------------------------
+CONFIGURACION RESUELTA
+--------------------------------------------------------------
+> docker compose config
+name: banco-xyz
+services:
+  artemis:
+    container_name: banco-artemis
+    environment:
+      ANONYMOUS_LOGIN: "true"
+      ARTEMIS_PASSWORD: artemis
+      ARTEMIS_USER: artemis
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:8161 >/dev/null || exit 1
+      timeout: 5s
+      interval: 10s
+      retries: 12
+    image: apache/activemq-artemis:2.31.2
+    networks:
+      banco: null
+    ports:
+      - mode: ingress
+        target: 61616
+        published: "61616"
+        protocol: tcp
+      - mode: ingress
+        target: 8161
+        published: "8161"
+        protocol: tcp
+  auth-server:
+    build:
+      context: C:\Users\jlsan\Documents\NetBeansProjects\batch-bank-migration
+      dockerfile: auth-server/Dockerfile
+    container_name: banco-auth
+    environment:
+      AUTH_ISSUER: http://auth-server:9000
+      BFF_ATM_SECRET: secreto-bff-atm
+      BFF_MOBILE_SECRET: secreto-bff-mobile
+      BFF_WEB_SECRET: secreto-bff-web
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:9000/actuator/health || exit 1
+      timeout: 5s
+      interval: 10s
+      retries: 12
+    networks:
+      banco: null
+    ports:
+      - mode: ingress
+        target: 9000
+        published: "9000"
+        protocol: tcp
+  banco-core-api:
+    build:
+      context: C:\Users\jlsan\Documents\NetBeansProjects\batch-bank-migration
+      dockerfile: banco-core-api/Dockerfile
+    container_name: banco-core-api
+    depends_on:
+      artemis:
+        condition: service_healthy
+        required: true
+      auth-server:
+        condition: service_healthy
+        required: true
+      config-server:
+        condition: service_healthy
+        required: true
+      eureka-server:
+        condition: service_healthy
+        required: true
+      postgres:
+        condition: service_healthy
+        required: true
+    environment:
+      ARTEMIS_EMBEDDED: "false"
+      ARTEMIS_MODE: native
+      ARTEMIS_URL: tcp://artemis:61616
+      AUTH_URL: http://auth-server:9000
+      CONFIG_URL: http://config-server:8888
+      DB_PASSWORD: postgres
+      DB_URL: jdbc:postgresql://postgres:5432/bank_legacy_db
+      DB_USER: postgres
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:8080/actuator/health || exit 1
+      timeout: 5s
+      interval: 15s
+      retries: 12
+    networks:
+      banco: null
+    ports:
+      - mode: ingress
+        target: 8080
+        published: "8080"
+        protocol: tcp
+  bff-atm:
+    build:
+      context: C:\Users\jlsan\Documents\NetBeansProjects\batch-bank-migration
+      dockerfile: bff-atm/Dockerfile
+    container_name: banco-bff-atm
+    depends_on:
+      banco-core-api:
+        condition: service_healthy
+        required: true
+    environment:
+      ATM_001_KEY: clave-demo-001
+      ATM_002_KEY: clave-demo-002
+      AUTH_URL: http://auth-server:9000
+      BFF_ATM_SECRET: secreto-bff-atm
+      CONFIG_URL: http://config-server:8888
+      CORE_API_URL: http://banco-core-api:8080
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    networks:
+      banco: null
+    ports:
+      - mode: ingress
+        target: 8083
+        published: "8083"
+        protocol: tcp
+  bff-mobile:
+    build:
+      context: C:\Users\jlsan\Documents\NetBeansProjects\batch-bank-migration
+      dockerfile: bff-mobile/Dockerfile
+    container_name: banco-bff-mobile
+    depends_on:
+      banco-core-api:
+        condition: service_healthy
+        required: true
+    environment:
+      AUTH_URL: http://auth-server:9000
+      BFF_MOBILE_SECRET: secreto-bff-mobile
+      CONFIG_URL: http://config-server:8888
+      CORE_API_URL: http://banco-core-api:8080
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    networks:
+      banco: null
+    ports:
+      - mode: ingress
+        target: 8082
+        published: "8082"
+        protocol: tcp
+  bff-web:
+    build:
+      context: C:\Users\jlsan\Documents\NetBeansProjects\batch-bank-migration
+      dockerfile: bff-web/Dockerfile
+    container_name: banco-bff-web
+    depends_on:
+      banco-core-api:
+        condition: service_healthy
+        required: true
+    environment:
+      AUTH_URL: http://auth-server:9000
+      BFF_WEB_SECRET: secreto-bff-web
+      CONFIG_URL: http://config-server:8888
+      CORE_API_URL: http://banco-core-api:8080
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    networks:
+      banco: null
+    ports:
+      - mode: ingress
+        target: 8081
+        published: "8081"
+        protocol: tcp
+  config-server:
+    build:
+      context: C:\Users\jlsan\Documents\NetBeansProjects\batch-bank-migration
+      dockerfile: config-server/Dockerfile
+    container_name: banco-config
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:8888/actuator/health || exit 1
+      timeout: 5s
+      interval: 10s
+      retries: 12
+    networks:
+      banco: null
+    ports:
+      - mode: ingress
+        target: 8888
+        published: "8888"
+        protocol: tcp
+  eureka-server:
+    build:
+      context: C:\Users\jlsan\Documents\NetBeansProjects\batch-bank-migration
+      dockerfile: eureka-server/Dockerfile
+    container_name: banco-eureka
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -sf http://localhost:8761/actuator/health || exit 1
+      timeout: 5s
+      interval: 10s
+      retries: 12
+    networks:
+      banco: null
+    ports:
+      - mode: ingress
+        target: 8761
+        published: "8761"
+        protocol: tcp
+  postgres:
+    container_name: banco-postgres
+    environment:
+      POSTGRES_DB: bank_legacy_db
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U postgres -d bank_legacy_db
+      timeout: 5s
+      interval: 10s
+      retries: 10
+    image: postgres:16-alpine
+    networks:
+      banco: null
+    ports:
+      - mode: ingress
+        target: 5432
+        published: "5432"
+        protocol: tcp
+    volumes:
+      - type: volume
+        source: datos-postgres
+        target: /var/lib/postgresql/data
+        volume: {}
+  servicio-notificaciones:
+    build:
+      context: C:\Users\jlsan\Documents\NetBeansProjects\batch-bank-migration
+      dockerfile: servicio-notificaciones/Dockerfile
+    container_name: banco-notificaciones
+    depends_on:
+      artemis:
+        condition: service_healthy
+        required: true
+      config-server:
+        condition: service_healthy
+        required: true
+      eureka-server:
+        condition: service_healthy
+        required: true
+    environment:
+      ARTEMIS_MODE: native
+      ARTEMIS_URL: tcp://artemis:61616
+      CONFIG_URL: http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+    networks:
+      banco: null
+    ports:
+      - mode: ingress
+        target: 8084
+        published: "8084"
+        protocol: tcp
+networks:
+  banco:
+    name: banco-xyz_banco
+    driver: bridge
+volumes:
+  datos-postgres:
+    name: banco-xyz_datos-postgres
+
+==============================================================
+NOTA SOBRE LA EJECUCION
+==============================================================
+El archivo quedo validado y con su configuracion resuelta por
+docker compose. El levantamiento con 'docker compose up' no se
+pudo registrar en este equipo porque Docker Desktop no publica
+su pipe de motor (dockerDesktopLinuxEngine), de modo que el
+demonio no acepta conexiones.
+
+La plataforma completa si quedo ejecutada y registrada sin
+contenedores, en los archivos 01 a 05 de esta misma carpeta.

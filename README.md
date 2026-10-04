@@ -278,7 +278,7 @@ mvn test
 
 | Carpeta | Contenido |
 |---|---|
-| [`evidencias/08-microservicios/`](evidencias/08-microservicios/) | Config server, Eureka, OAuth2, eventos JMS, resiliencia y los tres BFF |
+| [`evidencias/08-microservicios/`](evidencias/08-microservicios/) | Config server, Eureka, OAuth2, eventos JMS, resiliencia, los tres BFF y la orquestación |
 | [`evidencias/06-apis-consola/`](evidencias/06-apis-consola/) | Las cuatro APIs del patrón BFF |
 | `evidencias/01` a `04` | Ejecución del batch y comparación de escalado |
 
