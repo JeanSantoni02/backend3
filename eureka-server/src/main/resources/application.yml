@@ -1,0 +1,30 @@
+server:
+  port: 8761
+
+spring:
+  application:
+    name: eureka-server
+
+eureka:
+  client:
+    # El propio servidor no se registra ni consulta el registro
+    register-with-eureka: false
+    fetch-registry: false
+  server:
+    # Desactivado para que en desarrollo los servicios caidos salgan del
+    # registro sin esperar el modo de autoproteccion
+    enable-self-preservation: false
+    eviction-interval-timer-in-ms: 15000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level %-28.28logger{0} : %msg%n"
+  level:
+    com.netflix.eureka: WARN
+    com.netflix.discovery: WARN

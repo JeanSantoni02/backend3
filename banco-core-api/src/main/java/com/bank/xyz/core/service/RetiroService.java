@@ -1,6 +1,8 @@
 package com.bank.xyz.core.service;
 
 import com.bank.xyz.core.dto.RetiroRequest;
+import com.bank.xyz.core.evento.EventoTransaccion;
+import com.bank.xyz.core.evento.PublicadorEventos;
 import com.bank.xyz.core.dto.RetiroResponse;
 import com.bank.xyz.core.exception.OperacionInvalidaException;
 import com.bank.xyz.core.exception.RecursoNoEncontradoException;
@@ -26,16 +28,19 @@ public class RetiroService {
 
     private final CuentaRepository cuentas;
     private final OperacionAtmRepository operaciones;
+    private final PublicadorEventos publicador;
 
     private final BigDecimal montoMaximo;
     private final BigDecimal multiplo;
 
     public RetiroService(CuentaRepository cuentas,
                          OperacionAtmRepository operaciones,
+                         PublicadorEventos publicador,
                          @Value("${banco.atm.monto-maximo:200000}") BigDecimal montoMaximo,
                          @Value("${banco.atm.multiplo:1000}") BigDecimal multiplo) {
         this.cuentas = cuentas;
         this.operaciones = operaciones;
+        this.publicador = publicador;
         this.montoMaximo = montoMaximo;
         this.multiplo = multiplo;
     }
@@ -80,6 +85,11 @@ public class RetiroService {
 
         log.info("Retiro cuenta={} monto={} saldo {} -> {}",
                 cuentaId, peticion.monto(), saldoAnterior, saldoResultante);
+
+        // El evento sale despues de confirmar el debito en base de datos
+        publicador.publicar(new EventoTransaccion(
+                peticion.referencia(), TIPO_RETIRO, cuentaId, peticion.monto(),
+                saldoResultante, peticion.referencia(), "ATM", LocalDateTime.now()));
 
         return respuesta(operacion, false);
     }

@@ -3,6 +3,10 @@ package com.bank.xyz.bff.atm.cliente;
 import com.bank.xyz.bff.atm.error.CoreApiNoDisponibleException;
 import com.bank.xyz.bff.atm.error.OperacionRechazadaException;
 import com.bank.xyz.bff.atm.error.RetiroIndeterminadoException;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -14,7 +18,9 @@ import org.springframework.web.client.RestClientResponseException;
 @Component
 public class ClienteCoreApi {
 
+    private static final Logger log = LoggerFactory.getLogger(ClienteCoreApi.class);
     private static final String BASE = "/api/v1/cuentas/";
+    private static final String INSTANCIA = "coreApi";
 
     private final RestClient coreApi;
 
@@ -22,6 +28,8 @@ public class ClienteCoreApi {
         this.coreApi = coreApi;
     }
 
+    @CircuitBreaker(name = INSTANCIA, fallbackMethod = "saldoNoDisponible")
+    @Retry(name = INSTANCIA)
     public CoreDto.Saldo saldo(Integer cuentaId) {
         try {
             return coreApi.get()
@@ -40,6 +48,10 @@ public class ClienteCoreApi {
         }
     }
 
+    // Reintentar un retiro es seguro porque el servicio de dominio lo trata de
+    // forma idempotente: la misma referencia no debita dos veces
+    @CircuitBreaker(name = INSTANCIA, fallbackMethod = "retiroNoConfirmado")
+    @Retry(name = INSTANCIA)
     public CoreDto.RetiroResponse retirar(Integer cuentaId, CoreDto.RetiroRequest peticion) {
         try {
             return coreApi.post()
@@ -52,14 +64,28 @@ public class ClienteCoreApi {
 
         } catch (RestClientResponseException e) {
             // El servicio respondio con un rechazo explicito: el debito NO se
-            // aplico, asi que es seguro traducirlo a un error de negocio.
+            // aplico, asi que se traduce a un error de negocio
             throw traducir(e);
 
         } catch (ResourceAccessException e) {
-            // No hubo respuesta. Aqui no se sabe si el debito se aplico, asi que
-            // no se puede tratar como un fallo limpio ni entregar el dinero.
+            // No hubo respuesta: no se sabe si el debito se aplico
             throw new RetiroIndeterminadoException(peticion.referencia());
         }
+    }
+
+    // Se invoca cuando el circuito esta abierto o se agotaron los reintentos
+    private CoreDto.Saldo saldoNoDisponible(Integer cuentaId, Throwable causa) {
+        log.error("Consulta de saldo de la cuenta {} sin respuesta: {}",
+                cuentaId, causa.toString());
+        throw new CoreApiNoDisponibleException("servicio de dominio no disponible");
+    }
+
+    private CoreDto.RetiroResponse retiroNoConfirmado(Integer cuentaId,
+                                                      CoreDto.RetiroRequest peticion,
+                                                      Throwable causa) {
+        log.error("Retiro de la cuenta {} sin confirmar ({}): queda para conciliacion",
+                cuentaId, causa.getMessage());
+        throw new RetiroIndeterminadoException(peticion.referencia());
     }
 
     private RuntimeException traducir(RestClientResponseException e) {
@@ -67,7 +93,7 @@ public class ClienteCoreApi {
         try {
             error = e.getResponseBodyAs(CoreDto.ErrorCore.class);
         } catch (Exception ignorada) {
-            // El cuerpo no vino en el formato esperado; se usa el estado HTTP.
+            // El cuerpo no vino en el formato esperado; se usa el estado HTTP
         }
 
         if (e.getStatusCode() == HttpStatus.NOT_FOUND) {

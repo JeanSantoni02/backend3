@@ -27,7 +27,7 @@ public class FiltroTerminalAtm extends OncePerRequestFilter {
     public static final String CABECERA_CLAVE = "X-ATM-Key";
 
     private static final List<String> RUTAS_PUBLICAS =
-            List.of("/swagger-ui", "/v3/api-docs", "/actuator/health");
+            List.of("/swagger-ui", "/v3/api-docs", "/actuator");
 
     private final AtmProperties propiedades;
 

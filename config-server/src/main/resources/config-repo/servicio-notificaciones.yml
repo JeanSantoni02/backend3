@@ -1,0 +1,10 @@
+banco:
+  eventos:
+    destino: banco.eventos.transaccion
+
+spring:
+  artemis:
+    mode: ${ARTEMIS_MODE:native}
+    broker-url: ${ARTEMIS_URL:tcp://localhost:61616}
+  jms:
+    pub-sub-domain: true

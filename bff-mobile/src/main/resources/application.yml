@@ -1,0 +1,43 @@
+server:
+  port: 8082
+  compression:
+    enabled: true
+    mime-types: application/json
+    min-response-size: 512
+
+spring:
+  application:
+    name: bff-mobile
+  config:
+    import: optional:configserver:${CONFIG_URL:http://localhost:8888}
+  cloud:
+    config:
+      fail-fast: false
+  jackson:
+    default-property-inclusion: non_null
+  security:
+    oauth2:
+      client:
+        registration:
+          core-api:
+            client-id: bff-mobile
+            client-secret: ${BFF_MOBILE_SECRET:secreto-bff-mobile}
+            authorization-grant-type: client_credentials
+            scope: cuentas.leer
+        provider:
+          core-api:
+            token-uri: ${AUTH_URL:http://localhost:9000}/oauth2/token
+
+banco:
+  core-api:
+    url: ${CORE_API_URL:http://localhost:8080}
+    timeout-conexion-ms: 1500
+    timeout-lectura-ms: 3000
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.bank.xyz.bff: INFO

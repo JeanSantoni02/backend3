@@ -1,0 +1,54 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: bff-atm
+  config:
+    import: optional:configserver:${CONFIG_URL:http://localhost:8888}
+  cloud:
+    config:
+      fail-fast: false
+  security:
+    oauth2:
+      client:
+        registration:
+          core-api:
+            client-id: bff-atm
+            client-secret: ${BFF_ATM_SECRET:secreto-bff-atm}
+            authorization-grant-type: client_credentials
+            scope: cuentas.leer,retiros.escribir
+        provider:
+          core-api:
+            token-uri: ${AUTH_URL:http://localhost:9000}/oauth2/token
+
+banco:
+  core-api:
+    timeout-conexion-ms: 2000
+    timeout-lectura-ms: 8000
+  atm:
+    terminales:
+      ATM-001: ${ATM_001_KEY:clave-demo-001}
+      ATM-002: ${ATM_002_KEY:clave-demo-002}
+
+server.error:
+  include-message: never
+  include-stacktrace: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,circuitbreakers,circuitbreakerevents,retries,retryevents
+  endpoint:
+    health:
+      show-details: always
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.bank.xyz.bff: INFO
+    AUDITORIA_ATM: INFO

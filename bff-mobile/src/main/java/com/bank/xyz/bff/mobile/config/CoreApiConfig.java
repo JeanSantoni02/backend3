@@ -3,6 +3,7 @@ package com.bank.xyz.bff.mobile.config;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
 
@@ -14,12 +15,17 @@ public class CoreApiConfig {
     @Bean
     public RestClient coreApi(@Value("${banco.core-api.url}") String url,
                               @Value("${banco.core-api.timeout-conexion-ms:1500}") int timeoutConexion,
-                              @Value("${banco.core-api.timeout-lectura-ms:3000}") int timeoutLectura) {
+                              @Value("${banco.core-api.timeout-lectura-ms:3000}") int timeoutLectura,
+                              ClientHttpRequestInterceptor interceptorOAuth2) {
 
         SimpleClientHttpRequestFactory fabrica = new SimpleClientHttpRequestFactory();
         fabrica.setConnectTimeout(Duration.ofMillis(timeoutConexion));
         fabrica.setReadTimeout(Duration.ofMillis(timeoutLectura));
 
-        return RestClient.builder().baseUrl(url).requestFactory(fabrica).build();
+        return RestClient.builder()
+                .baseUrl(url)
+                .requestFactory(fabrica)
+                .requestInterceptor(interceptorOAuth2)
+                .build();
     }
 }

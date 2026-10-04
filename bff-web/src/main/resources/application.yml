@@ -1,0 +1,41 @@
+server:
+  port: 8081
+  compression:
+    enabled: true
+    mime-types: application/json
+    min-response-size: 2048
+
+spring:
+  application:
+    name: bff-web
+  config:
+    import: optional:configserver:${CONFIG_URL:http://localhost:8888}
+  cloud:
+    config:
+      fail-fast: false
+  security:
+    oauth2:
+      client:
+        registration:
+          core-api:
+            client-id: bff-web
+            client-secret: ${BFF_WEB_SECRET:secreto-bff-web}
+            authorization-grant-type: client_credentials
+            scope: cuentas.leer,transacciones.leer
+        provider:
+          core-api:
+            token-uri: ${AUTH_URL:http://localhost:9000}/oauth2/token
+
+banco:
+  core-api:
+    url: ${CORE_API_URL:http://localhost:8080}
+    timeout-conexion-ms: 2000
+    timeout-lectura-ms: 5000
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    com.bank.xyz.bff: INFO

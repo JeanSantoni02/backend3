@@ -28,7 +28,7 @@ public class SeguridadConfig {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(rutas -> rutas
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html",
-                                "/v3/api-docs/**", "/actuator/health").permitAll()
+                                "/v3/api-docs/**", "/actuator/**").permitAll()
                         .requestMatchers("/bff/atm/**").hasRole("CAJERO")
                         .anyRequest().denyAll())
                 .addFilterBefore(filtroTerminal, UsernamePasswordAuthenticationFilter.class)

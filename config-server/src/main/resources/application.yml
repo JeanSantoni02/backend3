@@ -1,0 +1,25 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: config-server
+  profiles:
+    # Perfil native: la configuracion se lee de config-repo/ en el classpath,
+    # sin depender de un repositorio Git externo
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: classpath:/config-repo
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,refresh
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level %-28.28logger{0} : %msg%n"

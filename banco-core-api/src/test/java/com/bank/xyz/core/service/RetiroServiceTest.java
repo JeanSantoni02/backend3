@@ -1,6 +1,7 @@
 package com.bank.xyz.core.service;
 
 import com.bank.xyz.core.dto.RetiroRequest;
+import com.bank.xyz.core.evento.PublicadorEventos;
 import com.bank.xyz.core.dto.RetiroResponse;
 import com.bank.xyz.core.exception.OperacionInvalidaException;
 import com.bank.xyz.core.exception.RecursoNoEncontradoException;
@@ -36,7 +37,7 @@ class RetiroServiceTest {
     void preparar() {
         cuentas = mock(CuentaRepository.class);
         operaciones = mock(OperacionAtmRepository.class);
-        servicio = new RetiroService(cuentas, operaciones,
+        servicio = new RetiroService(cuentas, operaciones, mock(PublicadorEventos.class),
                 new BigDecimal("200000"), new BigDecimal("1000"));
         when(operaciones.findByReferencia(any())).thenReturn(Optional.empty());
     }

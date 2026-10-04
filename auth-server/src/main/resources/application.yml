@@ -1,0 +1,30 @@
+server:
+  port: 9000
+
+spring:
+  application:
+    name: auth-server
+
+banco:
+  oauth2:
+    issuer: ${AUTH_ISSUER:http://localhost:9000}
+    clientes:
+      - id: bff-web
+        secreto: ${BFF_WEB_SECRET:secreto-bff-web}
+        scopes: cuentas.leer,transacciones.leer
+      - id: bff-mobile
+        secreto: ${BFF_MOBILE_SECRET:secreto-bff-mobile}
+        scopes: cuentas.leer
+      - id: bff-atm
+        secreto: ${BFF_ATM_SECRET:secreto-bff-atm}
+        scopes: cuentas.leer,retiros.escribir
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  pattern:
+    console: "%d{HH:mm:ss.SSS} %-5level %-28.28logger{0} : %msg%n"

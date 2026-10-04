@@ -1,0 +1,29 @@
+banco:
+  atm:
+    monto-maximo: 200000
+    multiplo: 1000
+  eventos:
+    destino: banco.eventos.transaccion
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bank_legacy_db}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  artemis:
+    mode: ${ARTEMIS_MODE:embedded}
+    broker-url: ${ARTEMIS_URL:tcp://localhost:61616}
+    embedded:
+      enabled: ${ARTEMIS_EMBEDDED:true}
+      persistent: false
+  jms:
+    pub-sub-domain: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH_URL:http://localhost:9000}

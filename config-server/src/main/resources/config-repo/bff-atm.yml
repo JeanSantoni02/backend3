@@ -1,0 +1,45 @@
+banco:
+  core-api:
+    url: ${CORE_API_URL:http://localhost:8080}
+  atm:
+    monto-minimo: 1000
+    monto-maximo: 200000
+    denominacion: 1000
+
+resilience4j:
+  # El circuito envuelve al reintento: primero se reintenta la llamada y, si
+  # la operacion completa sigue fallando, recien ahi cuenta como fallo del
+  # circuito. Con el orden por defecto es al reves y el circuito nunca
+  # alcanza a reevaluar su estado.
+  circuitbreaker:
+    circuit-breaker-aspect-order: 3
+    instances:
+      coreApi:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 20s
+        permitted-number-of-calls-in-half-open-state: 3
+        # La transicion a HALF_OPEN se evalua en la siguiente llamada tras la
+        # espera. La variante automatica con temporizador entra en recursion
+        # infinita en resilience4j 2.1.0 y termina en StackOverflowError.
+        automatic-transition-from-open-to-half-open-enabled: false
+        register-health-indicator: true
+        # Un rechazo de negocio (saldo insuficiente, cuenta inexistente) no es
+        # una falla del servicio: no debe abrir el circuito
+        ignore-exceptions:
+          - com.bank.xyz.bff.atm.error.OperacionRechazadaException
+  retry:
+    retry-aspect-order: 2
+    instances:
+      coreApi:
+        max-attempts: 3
+        wait-duration: 400ms
+        exponential-backoff-multiplier: 2
+        ignore-exceptions:
+          - com.bank.xyz.bff.atm.error.OperacionRechazadaException
+  timelimiter:
+    instances:
+      coreApi:
+        timeout-duration: 8s
