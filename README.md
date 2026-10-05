@@ -99,29 +99,25 @@ Carga inicial de los datos (una sola vez):
 java -jar batch-migration/target/batch-migration-1.0-SNAPSHOT.jar --job=todos
 ```
 
-Luego, cada servicio en su terminal y **en este orden**:
+Luego, un script levanta los ocho servicios en el orden que exigen sus
+dependencias y espera a que cada uno responda antes de seguir con el siguiente:
+
+```bash
+powershell -ExecutionPolicy Bypass -File ejecutar-plataforma.ps1
+```
+
+```bash
+powershell -ExecutionPolicy Bypass -File detener-plataforma.ps1
+```
+
+Los logs de cada servicio quedan en `logs/`.
+
+Para levantarlos a mano, el orden es: `config-server`, `eureka-server`,
+`auth-server`, `banco-core-api`, `servicio-notificaciones` y al final los tres BFF.
 
 ```bash
 java -jar config-server/target/config-server-1.0-SNAPSHOT.jar
 ```
-
-```bash
-java -jar eureka-server/target/eureka-server-1.0-SNAPSHOT.jar
-```
-
-```bash
-java -jar auth-server/target/auth-server-1.0-SNAPSHOT.jar
-```
-
-```bash
-java -jar banco-core-api/target/banco-core-api-1.0-SNAPSHOT.jar
-```
-
-```bash
-java -jar servicio-notificaciones/target/servicio-notificaciones-1.0-SNAPSHOT.jar
-```
-
-Después los tres BFF (`bff-web`, `bff-mobile`, `bff-atm`).
 
 Sin Docker, `banco-core-api` levanta un broker Artemis **embebido** que publica un
 puerto TCP en 61616, de modo que el servicio de notificaciones se conecta igual.

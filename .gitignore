@@ -9,3 +9,6 @@ nbactions.xml
 !evidencias/*.log
 __pycache__/
 *.pyc
+
+# Logs de la ejecucion local
+logs/
