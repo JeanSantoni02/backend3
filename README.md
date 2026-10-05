@@ -75,14 +75,38 @@ docker compose up -d --build
 docker compose ps
 ```
 
+Los diez componentes deben quedar en `healthy`. Para seguir el arranque de uno:
+
 ```bash
 docker compose logs -f banco-core-api
+```
+
+La base del contenedor arranca vacía. La carga inicial se hace una sola vez,
+con el job de batch apuntando al puerto que publica el contenedor:
+
+```bash
+java -jar batch-migration/target/batch-migration-1.0-SNAPSHOT.jar --job=todos
+```
+
+Antes de correrlo, define `DB_URL` hacia ese puerto. El job debe ejecutarse
+**antes** de que el servicio de dominio cree las tablas, porque el dominio las
+mapea de solo lectura y no genera las secuencias que el batch necesita:
+
+```bash
+docker compose up -d postgres
 ```
 
 Para detener y borrar los volúmenes:
 
 ```bash
 docker compose down -v
+```
+
+Si ya tienes un PostgreSQL instalado ocupando el 5432, publica el del contenedor
+en otro puerto:
+
+```bash
+DB_HOST_PORT=5433 docker compose up -d
 ```
 
 ### Sin Docker

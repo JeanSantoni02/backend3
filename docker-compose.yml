@@ -19,7 +19,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
     ports:
-      - "5432:5432"
+      # Configurable para no chocar con un PostgreSQL instalado en la maquina
+      - "${DB_HOST_PORT:-5432}:5432"
     volumes:
       - datos-postgres:/var/lib/postgresql/data
     healthcheck:
@@ -138,6 +139,11 @@ services:
       ARTEMIS_URL: tcp://artemis:61616
     ports:
       - "8084:8084"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8084/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     depends_on:
       artemis: { condition: service_healthy }
       config-server: { condition: service_healthy }
@@ -157,6 +163,11 @@ services:
       BFF_WEB_SECRET: ${BFF_WEB_SECRET:-secreto-bff-web}
     ports:
       - "8081:8081"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     depends_on:
       banco-core-api: { condition: service_healthy }
     networks: [banco]
@@ -174,6 +185,11 @@ services:
       BFF_MOBILE_SECRET: ${BFF_MOBILE_SECRET:-secreto-bff-mobile}
     ports:
       - "8082:8082"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     depends_on:
       banco-core-api: { condition: service_healthy }
     networks: [banco]
@@ -193,6 +209,11 @@ services:
       ATM_002_KEY: ${ATM_002_KEY:-clave-demo-002}
     ports:
       - "8083:8083"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8083/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     depends_on:
       banco-core-api: { condition: service_healthy }
     networks: [banco]

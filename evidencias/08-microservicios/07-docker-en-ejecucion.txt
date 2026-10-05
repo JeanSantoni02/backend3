@@ -1,0 +1,109 @@
+﻿==============================================================
+ PLATAFORMA EN CONTENEDORES
+ Generado: 2026-10-04 21:21:12
+==============================================================
+
+--------------------------------------------------------------
+VERSIONES
+--------------------------------------------------------------
+> docker version --format '{{.Server.Version}}'
+  29.2.1
+
+> docker compose version --short
+  5.1.0
+
+--------------------------------------------------------------
+IMAGENES CONSTRUIDAS
+--------------------------------------------------------------
+> docker images --filter reference=banco-xyz-*
+banco-xyz-banco-core-api  623MB
+banco-xyz-bff-web  551MB
+banco-xyz-bff-mobile  551MB
+banco-xyz-bff-atm  556MB
+banco-xyz-servicio-notificaciones  556MB
+banco-xyz-eureka-server  540MB
+banco-xyz-auth-server  488MB
+banco-xyz-config-server  517MB
+
+--------------------------------------------------------------
+CONTENEDORES EN EJECUCION
+--------------------------------------------------------------
+> docker compose ps
+banco-artemis|Up 5 minutes (healthy)|0.0.0.0:8161->8161/tcp, [::]:8161->8161/tcp, 0.0.0.0:61616->61616/tcp, [::]:61616->61616/tcp
+banco-auth|Up 5 minutes (healthy)|0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp
+banco-bff-atm|Up 3 minutes (healthy)|0.0.0.0:8083->8083/tcp, [::]:8083->8083/tcp
+banco-bff-mobile|Up 3 minutes (healthy)|0.0.0.0:8082->8082/tcp, [::]:8082->8082/tcp
+banco-bff-web|Up 3 minutes (healthy)|0.0.0.0:8081->8081/tcp, [::]:8081->8081/tcp
+banco-config|Up 5 minutes (healthy)|0.0.0.0:8888->8888/tcp, [::]:8888->8888/tcp
+banco-core-api|Up 5 minutes (healthy)|0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+banco-eureka|Up 5 minutes (healthy)|0.0.0.0:8761->8761/tcp, [::]:8761->8761/tcp
+banco-notificaciones|Up 3 minutes (healthy)|0.0.0.0:8084->8084/tcp, [::]:8084->8084/tcp
+banco-postgres|Up 5 minutes (healthy)|0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+
+--------------------------------------------------------------
+DEPENDENCIAS RESUELTAS POR HEALTHCHECK
+--------------------------------------------------------------
+Ningun microservicio arranca antes que su infraestructura. El orden
+que impuso compose en este arranque fue:
+
+  postgres y artemis  ->  healthy
+  config-server       ->  healthy
+  eureka-server       ->  healthy
+  auth-server         ->  healthy
+  banco-core-api      ->  healthy   (espera a postgres, config y eureka)
+  servicio-notificaciones y los tres BFF
+
+--------------------------------------------------------------
+SERVICE DISCOVERY DENTRO DE LA RED DE DOCKER
+--------------------------------------------------------------
+> GET http://localhost:8761/eureka/apps
+  BANCO-CORE-API             UP
+  BFF-ATM                    UP
+  BFF-MOBILE                 UP
+  BFF-WEB                    UP
+  SERVICIO-NOTIFICACIONES    UP
+
+--------------------------------------------------------------
+OAUTH2 CONTRA EL CONTENEDOR auth-server
+--------------------------------------------------------------
+> POST http://localhost:9000/oauth2/token  (client_credentials, cliente bff-atm)
+  token emitido
+  tipo:    Bearer
+  scopes:  retiros.escribir cuentas.leer
+  vigencia: 1799 s
+
+--------------------------------------------------------------
+AUTORIZACION EN EL SERVICIO DE DOMINIO
+--------------------------------------------------------------
+> GET /api/v1/cuentas/101/saldo  SIN token
+  HTTP 401
+  El resource server rechaza la peticion sin credencial.
+
+> GET /api/v1/cuentas/101/saldo  CON token
+  HTTP 404
+  La autorizacion pasa y la peticion llega a la consulta. El 404 indica
+  que la cuenta no existe en la base del contenedor, que arranca vacia:
+  la carga inicial se hace corriendo el job de batch contra ella.
+
+--------------------------------------------------------------
+CONSUMO DE RECURSOS
+--------------------------------------------------------------
+> docker stats --no-stream
+banco-bff-web|0.21%|284.9MiB / 7.678GiB
+banco-bff-mobile|0.13%|304.3MiB / 7.678GiB
+banco-notificaciones|0.22%|327.2MiB / 7.678GiB
+banco-bff-atm|0.13%|346.1MiB / 7.678GiB
+banco-core-api|0.11%|472.6MiB / 7.678GiB
+banco-postgres|0.48%|44.29MiB / 7.678GiB
+banco-eureka|0.93%|325.9MiB / 7.678GiB
+banco-auth|0.12%|208.7MiB / 7.678GiB
+banco-config|0.11%|225.6MiB / 7.678GiB
+banco-artemis|0.28%|279.6MiB / 7.678GiB
+
+==============================================================
+ RESULTADO
+==============================================================
+Los diez componentes levantan con un solo comando, cada uno espera a
+que su infraestructura este sana, los cinco microservicios se registran
+en Eureka por la red interna de Docker y la cadena OAuth2 funciona de
+extremo a extremo entre contenedores.

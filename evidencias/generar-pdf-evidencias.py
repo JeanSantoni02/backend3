@@ -64,6 +64,11 @@ CAPTURAS = [
      "Estado del circuit breaker",
      "El actuator exponiendo la instancia coreApi en estado CLOSED, con su umbral de "
      "fallos en 50 % y el conteo de llamadas de la ventana."),
+    ("10-eureka-en-contenedores.jpg",
+     "La misma plataforma, en contenedores",
+     "Eureka corriendo dentro de Docker. Los identificadores de instancia son los "
+     "hostname de cada contenedor, no los de la maquina: los cinco microservicios se "
+     "descubren por la red interna que creo docker-compose."),
     ("06-notificacion-por-evento.jpg",
      "Notificacion generada por un evento",
      "La notificacion que produjo el servicio consumidor a partir del evento que publico "
@@ -82,7 +87,9 @@ CONSOLAS = [
     ("05-bff-sobre-la-plataforma.txt",
      "Los tres BFF operando sobre la plataforma", None),
     ("06-docker-compose.txt",
-     "Dockerizacion y orquestacion", 70),
+     "Dockerizacion: validacion del archivo", 40),
+    ("07-docker-en-ejecucion.txt",
+     "Orquestacion: los diez contenedores en ejecucion", None),
 ]
 
 partes = []
@@ -151,7 +158,7 @@ los tres puntos pedidos para la semana 8 sobre la base construida en las semanas
       primera y la segunda copia solo el jar sobre un JRE, con un usuario sin privilegios.</td></tr>
   <tr><td><b>docker-compose</b></td><td>Orquesta diez componentes con healthcheck y
       <i>condition: service_healthy</i>, de modo que ningun microservicio arranca antes que
-      su infraestructura.</td></tr>
+      su infraestructura. Verificado: los diez quedan en estado <i>healthy</i>.</td></tr>
 </table>
 <table>
   <tr><th style="width:30%">Modulo</th><th style="width:14%">Puerto</th><th>Funcion</th></tr>
@@ -184,12 +191,11 @@ for archivo, titulo, maximo in CONSOLAS:
     partes.append('<div class="bloque"><h4>%s</h4><pre>%s</pre></div>'
                   % (html.escape(titulo), consola(archivo, maximo)))
 partes.append("""
-<div class="nota"><b>Sobre el levantamiento de contenedores.</b> El archivo
-docker-compose.yml quedo validado y con su configuracion resuelta, pero no se pudo
-registrar un <span style="font-family:Consolas">docker compose up</span> porque Docker
-Desktop no publica su pipe de motor en este equipo y el demonio no acepta conexiones.
-La plataforma completa si quedo ejecutada y registrada sin contenedores, como muestran
-las capturas y las salidas anteriores.</div>
+<div class="nota"><b>Sobre la base de datos en contenedores.</b> El volumen de
+PostgreSQL arranca vacio, asi que la carga inicial se hace una sola vez corriendo el
+job de batch contra el puerto que publica el contenedor. Por eso la consulta de una
+cuenta responde 404 con un token valido: la autorizacion paso y la peticion llego a
+la consulta, pero la cuenta aun no esta cargada.</div>
 </section>""")
 
 partes.append("</body></html>")
