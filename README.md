@@ -272,9 +272,11 @@ mvn test
 
 ## Evidencia
 
-| Carpeta | Contenido |
+| Archivo o carpeta | Contenido |
 |---|---|
+| [`Evidencias Semana 8 Jean Santoni Backend 3.pdf`](evidencias/Evidencias%20Semana%208%20Jean%20Santoni%20Backend%203.pdf) | Informe con las capturas y las salidas de consola |
 | [`evidencias/08-microservicios/`](evidencias/08-microservicios/) | Config server, Eureka, OAuth2, eventos JMS, resiliencia, los tres BFF y la orquestación |
+| [`evidencias/08-microservicios/capturas/`](evidencias/08-microservicios/capturas/) | Capturas de la plataforma en ejecución |
 | [`evidencias/06-apis-consola/`](evidencias/06-apis-consola/) | Las cuatro APIs del patrón BFF |
 | `evidencias/01` a `04` | Ejecución del batch y comparación de escalado |
 
@@ -284,10 +286,17 @@ Se regenera con los servicios levantados:
 powershell -ExecutionPolicy Bypass -File evidencias\generar-evidencia-microservicios.ps1
 ```
 
+El PDF se rearma con:
+
+```bash
+python evidencias\generar-pdf-evidencias.py
+```
+
 ---
 
 ## Documentación
 
 - [Arquitectura de eventos](docs/arquitectura-eventos.md)
 - [Detalle del batch](batch-migration/README.md)
-- [Propuesta técnica del patrón BFF](PROPUESTA-TECNICA-BFF.md)
+- [Propuesta técnica — microservicios en la nube](PROPUESTA-TECNICA-CLOUD.md)
+- [Propuesta técnica — patrón BFF](PROPUESTA-TECNICA-BFF.md)
