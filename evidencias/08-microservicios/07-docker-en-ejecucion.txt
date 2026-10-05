@@ -1,6 +1,6 @@
 ﻿==============================================================
  PLATAFORMA EN CONTENEDORES
- Generado: 2026-10-04 21:21:12
+ Generado: 2026-10-04 21:30:56
 ==============================================================
 
 --------------------------------------------------------------
@@ -17,11 +17,11 @@ IMAGENES CONSTRUIDAS
 --------------------------------------------------------------
 > docker images --filter reference=banco-xyz-*
 banco-xyz-banco-core-api  623MB
+banco-xyz-bff-atm  556MB
 banco-xyz-bff-web  551MB
 banco-xyz-bff-mobile  551MB
-banco-xyz-bff-atm  556MB
-banco-xyz-servicio-notificaciones  556MB
 banco-xyz-eureka-server  540MB
+banco-xyz-servicio-notificaciones  556MB
 banco-xyz-auth-server  488MB
 banco-xyz-config-server  517MB
 
@@ -29,16 +29,16 @@ banco-xyz-config-server  517MB
 CONTENEDORES EN EJECUCION
 --------------------------------------------------------------
 > docker compose ps
-banco-artemis|Up 5 minutes (healthy)|0.0.0.0:8161->8161/tcp, [::]:8161->8161/tcp, 0.0.0.0:61616->61616/tcp, [::]:61616->61616/tcp
-banco-auth|Up 5 minutes (healthy)|0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp
-banco-bff-atm|Up 3 minutes (healthy)|0.0.0.0:8083->8083/tcp, [::]:8083->8083/tcp
-banco-bff-mobile|Up 3 minutes (healthy)|0.0.0.0:8082->8082/tcp, [::]:8082->8082/tcp
-banco-bff-web|Up 3 minutes (healthy)|0.0.0.0:8081->8081/tcp, [::]:8081->8081/tcp
-banco-config|Up 5 minutes (healthy)|0.0.0.0:8888->8888/tcp, [::]:8888->8888/tcp
-banco-core-api|Up 5 minutes (healthy)|0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
-banco-eureka|Up 5 minutes (healthy)|0.0.0.0:8761->8761/tcp, [::]:8761->8761/tcp
-banco-notificaciones|Up 3 minutes (healthy)|0.0.0.0:8084->8084/tcp, [::]:8084->8084/tcp
-banco-postgres|Up 5 minutes (healthy)|0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+banco-artemis|Up 3 minutes (healthy)|0.0.0.0:8161->8161/tcp, [::]:8161->8161/tcp, 0.0.0.0:61616->61616/tcp, [::]:61616->61616/tcp
+banco-auth|Up 3 minutes (healthy)|0.0.0.0:9000->9000/tcp, [::]:9000->9000/tcp
+banco-bff-atm|Up 2 minutes (healthy)|0.0.0.0:8083->8083/tcp, [::]:8083->8083/tcp
+banco-bff-mobile|Up 2 minutes (healthy)|0.0.0.0:8082->8082/tcp, [::]:8082->8082/tcp
+banco-bff-web|Up 2 minutes (healthy)|0.0.0.0:8081->8081/tcp, [::]:8081->8081/tcp
+banco-config|Up 3 minutes (healthy)|0.0.0.0:8888->8888/tcp, [::]:8888->8888/tcp
+banco-core-api|Up 2 minutes (healthy)|0.0.0.0:8080->8080/tcp, [::]:8080->8080/tcp
+banco-eureka|Up 3 minutes (healthy)|0.0.0.0:8761->8761/tcp, [::]:8761->8761/tcp
+banco-notificaciones|Up 2 minutes (healthy)|0.0.0.0:8084->8084/tcp, [::]:8084->8084/tcp
+banco-postgres|Up 3 minutes (healthy)|0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
 
 --------------------------------------------------------------
 DEPENDENCIAS RESUELTAS POR HEALTHCHECK
@@ -80,30 +80,68 @@ AUTORIZACION EN EL SERVICIO DE DOMINIO
   El resource server rechaza la peticion sin credencial.
 
 > GET /api/v1/cuentas/101/saldo  CON token
-  HTTP 404
-  La autorizacion pasa y la peticion llega a la consulta. El 404 indica
-  que la cuenta no existe en la base del contenedor, que arranca vacia:
-  la carga inicial se hace corriendo el job de batch contra ella.
+  HTTP 200
+  La autorizacion pasa y el dominio responde con los datos que cargo el
+  batch en la base del contenedor.
+
+--------------------------------------------------------------
+FLUJO COMPLETO ENTRE CONTENEDORES
+--------------------------------------------------------------
+> POST /bff/atm/cuentas/101/retiro   (monto 5000, referencia DOCKER-213057)
+  {"comprobante":"DOCKER-213057","cuenta":101,"montoEntregado":5000,"saldoResultante":110814.17,"terminal":"ATM-001","duplicado":false,"fechaHora":"2026-10-05T01:30:57.517070064"}
+
+El dominio confirma el debito y recien entonces publica el evento en el
+topico del contenedor de Artemis.
+
+> GET http://localhost:8084/api/v1/notificaciones
+  [{"eventoId":"DOCKER-213057","cuentaId":101,"titulo":"Retiro realizado","mensaje":"Se registro un retiro realizado por $5.000 en tu cuenta 101. Saldo disponible: $110.814.","canal":"ATM","recibidoEn":"2026-10-05T01:30:57.525681948"},{"eventoId":"DOCKER-213015","cuentaId":101,"titulo":"Retiro realizado","mensaje":"Se registro un retiro realizado por $5.000 en tu cuenta 101. Saldo disponible: $115.814.","canal":"ATM","recibidoEn":"2026-10-05T01:30:15.834344945"},{"eventoId":"DOCKER-212935","cuentaId":101,"titulo":"Retiro realizado","mensaje":"Se registro un retiro realizado por $5.000 en tu cuenta 101. Saldo disponible: $120.814.","canal":"ATM","recibidoEn":"2026-10-05T01:29:35.967802218"}]
+
+El servicio de notificaciones, en otro contenedor, consumio el evento y
+genero el aviso sin que nadie se lo pidiera.
+
+> GET /api/v1/notificaciones/resumen   antes de repetir
+  totalNotificaciones: 3
+
+> POST el mismo retiro otra vez, con la misma referencia
+  {"comprobante":"DOCKER-213057","cuenta":101,"montoEntregado":5000.00,"saldoResultante":110814.17,"terminal":"ATM-001","duplicado":true,"fechaHora":"2026-10-05T01:30:57.51707"}
+
+Responde duplicado:true con el mismo saldo: no debita dos veces.
+
+> GET /api/v1/notificaciones/resumen   despues de repetir
+  totalNotificaciones: 3
+
+El contador no se movio de 3 a 3: la peticion repetida no
+genero una segunda notificacion.
+
+> POST /bff/atm/cuentas/101/retiro   (monto 4500)
+  {"codigo":"DENOMINACION","mensaje":"este cajero solo entrega billetes de 1000","entregarEfectivo":false,"referencia":null}
+
+Rechazo de negocio: el cajero solo entrega billetes de 1000. No es una
+falla, asi que no cuenta para abrir el circuito.
 
 --------------------------------------------------------------
 CONSUMO DE RECURSOS
 --------------------------------------------------------------
 > docker stats --no-stream
-banco-bff-web|0.21%|284.9MiB / 7.678GiB
-banco-bff-mobile|0.13%|304.3MiB / 7.678GiB
-banco-notificaciones|0.22%|327.2MiB / 7.678GiB
-banco-bff-atm|0.13%|346.1MiB / 7.678GiB
-banco-core-api|0.11%|472.6MiB / 7.678GiB
-banco-postgres|0.48%|44.29MiB / 7.678GiB
-banco-eureka|0.93%|325.9MiB / 7.678GiB
-banco-auth|0.12%|208.7MiB / 7.678GiB
-banco-config|0.11%|225.6MiB / 7.678GiB
-banco-artemis|0.28%|279.6MiB / 7.678GiB
+banco-bff-atm|0.14%|344.2MiB / 7.678GiB
+banco-bff-web|0.13%|278.4MiB / 7.678GiB
+banco-bff-mobile|0.11%|296.2MiB / 7.678GiB
+banco-core-api|0.13%|465.7MiB / 7.678GiB
+banco-notificaciones|0.27%|309MiB / 7.678GiB
+banco-auth|0.18%|247.3MiB / 7.678GiB
+banco-eureka|1.05%|308.4MiB / 7.678GiB
+banco-config|0.12%|227.8MiB / 7.678GiB
+banco-artemis|0.30%|278.4MiB / 7.678GiB
+banco-postgres|3.55%|44.06MiB / 7.678GiB
 
 ==============================================================
  RESULTADO
 ==============================================================
 Los diez componentes levantan con un solo comando, cada uno espera a
-que su infraestructura este sana, los cinco microservicios se registran
-en Eureka por la red interna de Docker y la cadena OAuth2 funciona de
-extremo a extremo entre contenedores.
+que su infraestructura este sana y los cinco microservicios se registran
+en Eureka por la red interna de Docker.
+
+El sistema opera igual que fuera de contenedores: el cajero autentica su
+terminal, el BFF pide un token al servidor de autorizacion, el dominio lo
+valida y debita, publica el evento en el broker y el servicio de
+notificaciones lo consume desde otro contenedor.

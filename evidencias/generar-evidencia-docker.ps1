@@ -74,9 +74,50 @@ A "  El resource server rechaza la peticion sin credencial."
 A ""
 A "> GET /api/v1/cuentas/101/saldo  CON token"
 A ("  HTTP " + (curl.exe -s -o NUL -w "%{http_code}" -H "Authorization: Bearer $tok" http://localhost:8080/api/v1/cuentas/101/saldo))
-A "  La autorizacion pasa y la peticion llega a la consulta. El 404 indica"
-A "  que la cuenta no existe en la base del contenedor, que arranca vacia:"
-A "  la carga inicial se hace corriendo el job de batch contra ella."
+A "  La autorizacion pasa y el dominio responde con los datos que cargo el"
+A "  batch en la base del contenedor."
+
+Titulo "FLUJO COMPLETO ENTRE CONTENEDORES"
+$ref = "DOCKER-" + (Get-Date -Format "HHmmss")
+$cuerpo = Join-Path $env:TEMP "evid-retiro-docker.json"
+Set-Content -Path $cuerpo -Value "{`"monto`":5000,`"referencia`":`"$ref`"}" -Encoding ASCII
+
+A "> POST /bff/atm/cuentas/101/retiro   (monto 5000, referencia $ref)"
+A ("  " + (curl.exe -s -X POST "http://localhost:8083/bff/atm/cuentas/101/retiro" -H "Content-Type: application/json" -H "X-ATM-Terminal: ATM-001" -H "X-ATM-Key: clave-demo-001" -d "@$cuerpo"))
+A ""
+A "El dominio confirma el debito y recien entonces publica el evento en el"
+A "topico del contenedor de Artemis."
+A ""
+Start-Sleep -Seconds 3
+A "> GET http://localhost:8084/api/v1/notificaciones"
+A ("  " + (curl.exe -s "http://localhost:8084/api/v1/notificaciones"))
+A ""
+A "El servicio de notificaciones, en otro contenedor, consumio el evento y"
+A "genero el aviso sin que nadie se lo pidiera."
+A ""
+$antes = (curl.exe -s "http://localhost:8084/api/v1/notificaciones/resumen" | ConvertFrom-Json).totalNotificaciones
+A "> GET /api/v1/notificaciones/resumen   antes de repetir"
+A "  totalNotificaciones: $antes"
+A ""
+A "> POST el mismo retiro otra vez, con la misma referencia"
+A ("  " + (curl.exe -s -X POST "http://localhost:8083/bff/atm/cuentas/101/retiro" -H "Content-Type: application/json" -H "X-ATM-Terminal: ATM-001" -H "X-ATM-Key: clave-demo-001" -d "@$cuerpo"))
+A ""
+A "Responde duplicado:true con el mismo saldo: no debita dos veces."
+A ""
+Start-Sleep -Seconds 3
+$despues = (curl.exe -s "http://localhost:8084/api/v1/notificaciones/resumen" | ConvertFrom-Json).totalNotificaciones
+A "> GET /api/v1/notificaciones/resumen   despues de repetir"
+A "  totalNotificaciones: $despues"
+A ""
+A "El contador no se movio de ${antes} a ${despues}: la peticion repetida no"
+A "genero una segunda notificacion."
+A ""
+A "> POST /bff/atm/cuentas/101/retiro   (monto 4500)"
+Set-Content -Path $cuerpo -Value "{`"monto`":4500,`"referencia`":`"$ref-B`"}" -Encoding ASCII
+A ("  " + (curl.exe -s -X POST "http://localhost:8083/bff/atm/cuentas/101/retiro" -H "Content-Type: application/json" -H "X-ATM-Terminal: ATM-001" -H "X-ATM-Key: clave-demo-001" -d "@$cuerpo"))
+A ""
+A "Rechazo de negocio: el cajero solo entrega billetes de 1000. No es una"
+A "falla, asi que no cuenta para abrir el circuito."
 
 Titulo "CONSUMO DE RECURSOS"
 A "> docker stats --no-stream"
@@ -87,9 +128,13 @@ A "=============================================================="
 A " RESULTADO"
 A "=============================================================="
 A "Los diez componentes levantan con un solo comando, cada uno espera a"
-A "que su infraestructura este sana, los cinco microservicios se registran"
-A "en Eureka por la red interna de Docker y la cadena OAuth2 funciona de"
-A "extremo a extremo entre contenedores."
+A "que su infraestructura este sana y los cinco microservicios se registran"
+A "en Eureka por la red interna de Docker."
+A ""
+A "El sistema opera igual que fuera de contenedores: el cajero autentica su"
+A "terminal, el BFF pide un token al servidor de autorizacion, el dominio lo"
+A "valida y debita, publica el evento en el broker y el servicio de"
+A "notificaciones lo consume desde otro contenedor."
 
 $l | Set-Content -Path $salida -Encoding UTF8
 "escrito: $salida"

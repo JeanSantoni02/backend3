@@ -69,6 +69,11 @@ CAPTURAS = [
      "Eureka corriendo dentro de Docker. Los identificadores de instancia son los "
      "hostname de cada contenedor, no los de la maquina: los cinco microservicios se "
      "descubren por la red interna que creo docker-compose."),
+    ("11-eventos-consumidos-en-contenedores.jpg",
+     "Eventos consumidos entre contenedores",
+     "Las notificaciones que genero el consumidor a partir de los eventos que publico "
+     "el dominio. Cada retiro cruzo cuatro contenedores: el BFF de cajeros, el servidor "
+     "de autorizacion, el dominio con su base y el broker."),
     ("06-notificacion-por-evento.jpg",
      "Notificacion generada por un evento",
      "La notificacion que produjo el servicio consumidor a partir del evento que publico "
@@ -193,9 +198,9 @@ for archivo, titulo, maximo in CONSOLAS:
 partes.append("""
 <div class="nota"><b>Sobre la base de datos en contenedores.</b> El volumen de
 PostgreSQL arranca vacio, asi que la carga inicial se hace una sola vez corriendo el
-job de batch contra el puerto que publica el contenedor. Por eso la consulta de una
-cuenta responde 404 con un token valido: la autorizacion paso y la peticion llego a
-la consulta, pero la cuenta aun no esta cargada.</div>
+job de batch contra el puerto que publica el contenedor, <u>antes</u> de levantar el
+resto de la plataforma: el servicio de dominio mapea esas tablas de solo lectura y, si
+las crea el primero, no genera las secuencias que el batch necesita.</div>
 </section>""")
 
 partes.append("</body></html>")
