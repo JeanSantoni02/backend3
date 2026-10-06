@@ -18,6 +18,14 @@ banco:
       - id: bff-atm
         secreto: ${BFF_ATM_SECRET:secreto-bff-atm}
         scopes: cuentas.leer,retiros.escribir
+      # servicio-cuentas consulta clientes al abrir una cuenta; no puede modificarlos
+      - id: servicio-cuentas
+        secreto: ${SERVICIO_CUENTAS_SECRET:secreto-servicio-cuentas}
+        scopes: clientes.leer
+      # Backoffice de operaciones: el unico cliente que opera los servicios de dominio
+      - id: portal-operaciones
+        secreto: ${PORTAL_OPERACIONES_SECRET:secreto-portal-operaciones}
+        scopes: clientes.leer,clientes.escribir,cuentas.leer,cuentas.escribir,pagos.leer,pagos.escribir
 
 management:
   endpoints:

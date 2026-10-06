@@ -1,7 +1,6 @@
-# Detiene los ocho servicios liberando sus puertos.
-# Uso:  powershell -ExecutionPolicy Bypass -File detener-plataforma.ps1
+# Detiene los servicios liberando sus puertos
 
-$puertos = @(8083, 8082, 8081, 8084, 8080, 9000, 8761, 8888)
+$puertos = @(8443, 8083, 8082, 8081, 8088, 8087, 8086, 8085, 8084, 8080, 9000, 8761, 8888)
 
 Write-Host ""
 foreach ($puerto in $puertos) {

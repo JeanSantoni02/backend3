@@ -39,7 +39,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 public class EstadoCuentaAnualJobConfig {
 
     public static final String JOB = "jobEstadosCuentaAnuales";
-    private static final String ARCHIVO = "cuentas_anuales.csv";
 
     private static final String SQL_LIMPIEZA = "DELETE FROM estado_cuenta_anual";
 
@@ -75,7 +74,7 @@ public class EstadoCuentaAnualJobConfig {
     }
 
     private Resource recurso() {
-        return new ClassPathResource(propiedades.getRutaDatos() + ARCHIVO);
+        return new ClassPathResource(propiedades.getRutaDatos() + propiedades.getArchivoAnuales());
     }
 
     @Bean
@@ -141,6 +140,8 @@ public class EstadoCuentaAnualJobConfig {
                 .step(stepCargaMovimientosTrabajador)
                 .gridSize(propiedades.getParticiones())
                 .taskExecutor(ejecutorParticiones)
+                // Primer intento mas las reejecuciones automaticas; despues el step queda cerrado
+                .startLimit(propiedades.getReejecucionesMaximas() + 1)
                 .build();
     }
 

@@ -1,0 +1,19 @@
+server:
+  port: ${PORT:8085}
+
+spring:
+  application:
+    name: servicio-clientes
+  config:
+    import: optional:configserver:${CONFIG_URL:http://localhost:8888}
+  cloud:
+    config:
+      fail-fast: false
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

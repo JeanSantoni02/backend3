@@ -1,5 +1,4 @@
-# Levanta los ocho servicios en el orden que exigen sus dependencias.
-# Uso:  powershell -ExecutionPolicy Bypass -File ejecutar-plataforma.ps1
+# Levanta los servicios en el orden que exigen sus dependencias
 
 $raiz = $PSScriptRoot
 $logs = Join-Path $raiz "logs"
@@ -11,62 +10,70 @@ if (-not $env:DB_PASSWORD) {
         [Runtime.InteropServices.Marshal]::SecureStringToBSTR($segura))
 }
 
-# El orden importa: cada servicio necesita que el anterior ya este arriba.
+# Orden de dependencias; servicio-pagos levanta dos instancias para el balanceo
 $servicios = @(
-    @{ nombre = "config-server";           puerto = 8888 },
-    @{ nombre = "eureka-server";           puerto = 8761 },
-    @{ nombre = "auth-server";             puerto = 9000 },
-    @{ nombre = "banco-core-api";          puerto = 8080 },
-    @{ nombre = "servicio-notificaciones"; puerto = 8084 },
-    @{ nombre = "bff-web";                 puerto = 8081 },
-    @{ nombre = "bff-mobile";              puerto = 8082 },
-    @{ nombre = "bff-atm";                 puerto = 8083 }
+    @{ modulo = "config-server";           puerto = 8888 },
+    @{ modulo = "eureka-server";           puerto = 8761 },
+    @{ modulo = "auth-server";             puerto = 9000 },
+    @{ modulo = "banco-core-api";          puerto = 8080 },
+    @{ modulo = "servicio-notificaciones"; puerto = 8084 },
+    @{ modulo = "servicio-clientes";       puerto = 8085 },
+    @{ modulo = "servicio-cuentas";        puerto = 8086 },
+    @{ modulo = "servicio-pagos";          puerto = 8087 },
+    @{ modulo = "servicio-pagos";          puerto = 8088 },
+    @{ modulo = "bff-web";                 puerto = 8081 },
+    @{ modulo = "bff-mobile";              puerto = 8082 },
+    @{ modulo = "bff-atm";                 puerto = 8083 },
+    @{ modulo = "api-gateway";             puerto = 8443; https = $true }
 )
 
 function Esta-Ocupado($puerto) {
     $null -ne (Get-NetTCPConnection -LocalPort $puerto -State Listen -ErrorAction SilentlyContinue)
 }
 
-function Esperar-Arranque($nombre, $puerto, $segundos = 90) {
+function Esperar-Arranque($s, $segundos = 120) {
+    $esquema = if ($s.https) { "https" } else { "http" }
+    $url = "${esquema}://localhost:$($s.puerto)/actuator/health"
     $fin = (Get-Date).AddSeconds($segundos)
     while ((Get-Date) -lt $fin) {
-        try {
-            $r = Invoke-WebRequest "http://localhost:$puerto/actuator/health" -UseBasicParsing -TimeoutSec 3
-            if ($r.StatusCode -eq 200) { return $true }
-        } catch { }
+        # -k acepta el certificado de desarrollo del gateway
+        $codigo = curl.exe -sk -o NUL -w "%{http_code}" $url 2>$null
+        if ($codigo -eq "200") { return $true }
         Start-Sleep -Seconds 2
     }
     return $false
 }
 
-$jars = @{}
 foreach ($s in $servicios) {
-    $jar = Join-Path $raiz "$($s.nombre)\target\$($s.nombre)-1.0-SNAPSHOT.jar"
+    $jar = Join-Path $raiz "$($s.modulo)\target\$($s.modulo)-1.0-SNAPSHOT.jar"
     if (-not (Test-Path $jar)) {
         Write-Host "Falta $jar" -ForegroundColor Red
         Write-Host "Compila primero con: mvn clean package" -ForegroundColor Yellow
         exit 1
     }
-    $jars[$s.nombre] = $jar
 }
 
 Write-Host ""
 foreach ($s in $servicios) {
+    $etiqueta = "$($s.modulo):$($s.puerto)"
     if (Esta-Ocupado $s.puerto) {
-        Write-Host ("  {0,-24} ya estaba arriba en :{1}" -f $s.nombre, $s.puerto) -ForegroundColor DarkGray
+        Write-Host ("  {0,-30} ya estaba arriba" -f $etiqueta) -ForegroundColor DarkGray
         continue
     }
 
-    $log = Join-Path $logs "$($s.nombre).log"
+    $jar = Join-Path $raiz "$($s.modulo)\target\$($s.modulo)-1.0-SNAPSHOT.jar"
+    $log = Join-Path $logs "$($s.modulo)-$($s.puerto).log"
+    $env:PORT = "$($s.puerto)"
+
     Start-Process -FilePath "java" `
-        -ArgumentList "-jar", $jars[$s.nombre] `
+        -ArgumentList "-Xms64m", "-Xmx320m", "-jar", $jar `
         -WorkingDirectory $raiz `
         -RedirectStandardOutput $log `
-        -RedirectStandardError (Join-Path $logs "$($s.nombre).err.log") `
+        -RedirectStandardError (Join-Path $logs "$($s.modulo)-$($s.puerto).err.log") `
         -WindowStyle Hidden | Out-Null
 
-    Write-Host ("  {0,-24} arrancando en :{1} ..." -f $s.nombre, $s.puerto) -NoNewline
-    if (Esperar-Arranque $s.nombre $s.puerto) {
+    Write-Host ("  {0,-30} arrancando..." -f $etiqueta) -NoNewline
+    if (Esperar-Arranque $s) {
         Write-Host " listo" -ForegroundColor Green
     } else {
         Write-Host " no respondio" -ForegroundColor Red
@@ -74,16 +81,16 @@ foreach ($s in $servicios) {
         exit 1
     }
 }
+Remove-Item Env:\PORT -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "Plataforma arriba." -ForegroundColor Green
 Write-Host ""
-Write-Host "  Eureka        http://localhost:8761"
-Write-Host "  Dominio       http://localhost:8080/swagger-ui.html"
-Write-Host "  BFF Web       http://localhost:8081/swagger-ui.html"
-Write-Host "  BFF Movil     http://localhost:8082/swagger-ui.html"
-Write-Host "  BFF Cajeros   http://localhost:8083/swagger-ui.html"
-Write-Host "  Notificaciones http://localhost:8084/swagger-ui.html"
+Write-Host "  Entrada unica (HTTPS)  https://localhost:8443"
+Write-Host "  Eureka                 http://localhost:8761"
+Write-Host "  Clientes               http://localhost:8085/swagger-ui.html"
+Write-Host "  Cuentas                http://localhost:8086/swagger-ui.html"
+Write-Host "  Pagos                  http://localhost:8087/swagger-ui.html"
 Write-Host ""
 Write-Host "Logs en la carpeta logs\. Para detener todo: detener-plataforma.ps1"
 Write-Host ""

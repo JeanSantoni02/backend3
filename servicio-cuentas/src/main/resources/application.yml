@@ -1,0 +1,31 @@
+server:
+  port: ${PORT:8086}
+
+spring:
+  application:
+    name: servicio-cuentas
+  config:
+    import: optional:configserver:${CONFIG_URL:http://localhost:8888}
+  cloud:
+    config:
+      fail-fast: false
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+  security:
+    oauth2:
+      client:
+        registration:
+          clientes:
+            client-id: servicio-cuentas
+            client-secret: ${SERVICIO_CUENTAS_SECRET:secreto-servicio-cuentas}
+            authorization-grant-type: client_credentials
+            scope: clientes.leer
+        provider:
+          clientes:
+            token-uri: ${AUTH_URL:http://localhost:9000}/oauth2/token
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html

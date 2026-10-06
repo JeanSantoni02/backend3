@@ -1,6 +1,7 @@
 banco:
   eventos:
     destino: banco.eventos.transaccion
+    alertas: banco.eventos.alertas
 
 spring:
   artemis:

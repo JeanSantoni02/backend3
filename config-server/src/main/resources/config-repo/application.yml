@@ -1,6 +1,9 @@
 banco:
   moneda: CLP
   zona-horaria: America/Santiago
+  eventos:
+    destino: banco.eventos.transaccion
+    alertas: banco.eventos.alertas
 
 eureka:
   client:
@@ -15,11 +18,15 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,circuitbreakers,circuitbreakerevents,refresh
+        include: health,info,metrics,prometheus,circuitbreakers,circuitbreakerevents,refresh
   endpoint:
     health:
       show-details: always
+  # Cada peticion lleva un traceId que viaja entre servicios y aparece en los logs
+  tracing:
+    sampling:
+      probability: 1.0
 
 logging:
   pattern:
-    console: "%d{HH:mm:ss.SSS} [%-14.14thread] %-5level %-26.26logger{0} : %msg%n"
+    console: "%d{HH:mm:ss.SSS} %-5level [%X{traceId:-}] [%-14.14thread] %-26.26logger{0} : %msg%n"

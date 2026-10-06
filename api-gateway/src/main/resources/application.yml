@@ -1,0 +1,18 @@
+server:
+  port: ${PORT:8443}
+  # TLS en el borde: el trafico entre servicios queda dentro de la red privada
+  ssl:
+    enabled: ${TLS_ACTIVO:true}
+    key-store: ${TLS_KEYSTORE:classpath:tls/gateway-dev.p12}
+    key-store-password: ${TLS_KEYSTORE_PASSWORD:cambiar-en-produccion}
+    key-store-type: PKCS12
+    key-alias: gateway
+
+spring:
+  application:
+    name: api-gateway
+  config:
+    import: optional:configserver:${CONFIG_URL:http://localhost:8888}
+  cloud:
+    config:
+      fail-fast: false

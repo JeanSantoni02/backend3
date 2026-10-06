@@ -33,8 +33,7 @@ public class EscuchaTransacciones {
             return;
         }
 
-        // El broker puede reentregar un mensaje; sin este control el cliente
-        // recibiria dos avisos del mismo retiro
+        // El broker puede reentregar un mensaje: sin este control llegarian dos avisos
         if (repositorio.yaProcesado(evento.getEventoId())) {
             log.info("Evento {} ya procesado, se ignora la reentrega", evento.getEventoId());
             return;
@@ -52,12 +51,22 @@ public class EscuchaTransacciones {
         String titulo = switch (e.getTipo() == null ? "" : e.getTipo()) {
             case "RETIRO" -> "Retiro realizado";
             case "DEPOSITO" -> "Deposito recibido";
+            case "TRANSFERENCIA_ENVIADA" -> "Transferencia enviada";
+            case "TRANSFERENCIA_RECIBIDA" -> "Transferencia recibida";
+            case "PAGO" -> "Pago realizado";
+            case "APERTURA" -> "Cuenta abierta";
+            case "CIERRE" -> "Cuenta cerrada";
             default -> "Movimiento en tu cuenta";
         };
 
-        String mensaje = "Se registro un %s por %s en tu cuenta %d. Saldo disponible: %s."
-                .formatted(titulo.toLowerCase(), CLP.format(e.getMonto()),
-                        e.getCuentaId(), CLP.format(e.getSaldoResultante()));
+        String mensaje = switch (e.getTipo() == null ? "" : e.getTipo()) {
+            case "APERTURA" -> "Tu cuenta %d ya esta operativa. Saldo inicial: %s."
+                    .formatted(e.getCuentaId(), CLP.format(e.getSaldoResultante()));
+            case "CIERRE" -> "Tu cuenta %d fue cerrada.".formatted(e.getCuentaId());
+            default -> "%s por %s en tu cuenta %d. Saldo disponible: %s."
+                    .formatted(titulo, CLP.format(e.getMonto()),
+                            e.getCuentaId(), CLP.format(e.getSaldoResultante()));
+        };
 
         return new Notificacion(e.getEventoId(), e.getCuentaId(), titulo, mensaje,
                 e.getCanal(), LocalDateTime.now());

@@ -1,4 +1,4 @@
-# Semana 3 — Migración de procesos batch a Spring Batch
+# Migración de procesos batch a Spring Batch
 
 Módulo `batch-migration`. Para la visión general del proyecto completo, ver el [README raíz](../README.md).
 
@@ -6,8 +6,10 @@ Migración de tres procesos legacy del Banco XYZ a Spring Batch, con persistenci
 PostgreSQL, tolerancia a fallos y escalado por particionamiento.
 
 Los datos de entrada son los archivos oficiales de
-[KariVillagran/bank_legacy_data](https://github.com/KariVillagran/bank_legacy_data),
-carpeta `data/semana_3` (1.000 filas por archivo).
+[KariVillagran/fin_legacy_data](https://github.com/KariVillagran/fin_legacy_data),
+carpeta `data/semana_3` (1.000 filas por archivo), copiados en
+`src/main/resources/data/fin_legacy/`. Los nombres de archivo se configuran con
+`banco.batch.archivo-*`, de modo que el mismo código procesa otro lote sin recompilar.
 
 ---
 
@@ -15,9 +17,9 @@ carpeta `data/semana_3` (1.000 filas por archivo).
 
 | Job | Archivo de entrada | Tablas que produce |
 |---|---|---|
-| `jobReporteTransaccionesDiarias` | `transacciones.csv` | `transacciones`, `resumen_diario` |
-| `jobCalculoInteresesMensuales` | `intereses.csv` | `intereses_calculados`, `cuentas` |
-| `jobEstadosCuentaAnuales` | `cuentas_anuales.csv` | `movimientos_anuales`, `estado_cuenta_anual` |
+| `jobReporteTransaccionesDiarias` | `movimientos_financieros_diarios.csv` | `transacciones`, `resumen_diario` |
+| `jobCalculoInteresesMensuales` | `intereses_trimestrales.csv` | `intereses_calculados`, `cuentas` |
+| `jobEstadosCuentaAnuales` | `estados_financieros_anuales.csv` | `movimientos_anuales`, `estado_cuenta_anual` |
 
 Los tres siguen la misma forma: un **step particionado** que carga y valida el detalle
 en paralelo, y un **step de agregación** que genera el resumen con una sola sentencia
@@ -121,28 +123,29 @@ llega al processor y cada una recibe un tratamiento explícito.
 
 Conteos medidos sobre las 1.000 filas de cada archivo:
 
-**transacciones.csv**
-- Cuatro formatos de fecha mezclados: `yyyy-MM-dd` (294), `dd-MM-yyyy` (250), `dd/MM/yyyy` (234), `yyyy/MM/dd` (222)
-- 55 filas con `2024-13-01`, un mes que no existe
-- Monto vacío en 168 filas, negativo en 141, cero en 18
-- Tipo `invalid` en 308 filas y `desconocido` en 63
+**movimientos_financieros_diarios.csv**
+- Cuatro formatos de fecha mezclados: `yyyy-MM-dd` (296), `yyyy/MM/dd` (252), `dd/MM/yyyy` (230), `dd-MM-yyyy` (222)
+- 49 filas con `2024-13-01`, un mes que no existe
+- Monto vacío en 168 filas, negativo en 125, cero en 20
+- Tipo `invalido` en 317 filas y `desconocido` en 66
 
-**intereses.csv**
-- 1.000 filas pero solo **50 `cuenta_id` distintos** (101–150), cada uno repetido entre 12 y 33 veces
-- Tipo `-1` en 279 filas y `unknown` en 52
-- Saldo vacío en 211 filas
-- Edad vacía en 193 filas y edad `150` en 52
-- Nombre `Unknown` en 50 filas
+**intereses_trimestrales.csv**
+- 1.000 filas pero solo **50 `cuenta_id` distintos** (101–150), cada uno repetido entre 12 y 31 veces
+- 7 filas **idénticas** a otra anterior: registros duplicados
+- Tipo `-1` en 281 filas y `unknown` en 44
+- Saldo vacío en 204 filas
+- Edad vacía en 171 filas y edad `150` en 46
+- Nombre `Unknown` en 48 filas
 
-**cuentas_anuales.csv**
+**estados_financieros_anuales.csv**
 - 20 cuentas (101–120), todas del año 2024
-- `deposito` en 296 filas y `depósito` **con tilde** en 52
-- Monto negativo en 254 filas, vacío en 48, cero en 12
-- Descripción vacía en 230 filas
+- `deposito` en 293 filas y `depósito` **con tilde** en 51
+- Monto negativo en 232 filas, vacío en 48, cero en 116
+- Descripción vacía en 184 filas
 
 ### Sobre las fechas de dos dígitos
 
-Se interpretan como **día primero** (`dd-MM-yyyy`). No es una suposición: 302 filas tienen
+Se interpretan como **día primero** (`dd-MM-yyyy`). No es una suposición: 267 filas tienen
 el primer componente mayor que 12 y ninguna tiene el segundo mayor que 12, así que es la
 única lectura consistente con el archivo.
 
@@ -191,11 +194,12 @@ salta y el listener lo anota en la tabla `errores_batch` con el motivo y la fila
 
 | Proceso | Motivo del descarte | Filas |
 |---|---|---:|
-| Transacciones | monto ausente o no numérico | 160 |
-| Transacciones | fecha inválida para un reporte diario | 55 |
+| Transacciones | monto ausente o no numérico | 162 |
+| Transacciones | fecha inválida para un reporte diario | 49 |
 | Intereses | tipo de cuenta no reconocido (`-1`) | 219 |
-| Intereses | saldo ausente | 211 |
-| Intereses | tipo de cuenta no reconocido (`unknown`) | 44 |
+| Intereses | saldo ausente | 204 |
+| Intereses | tipo de cuenta no reconocido (`unknown`) | 36 |
+| Intereses | registro duplicado | 3 |
 | Estados anuales | monto ausente o no numérico | 48 |
 
 El razonamiento de cada uno:
@@ -205,6 +209,11 @@ El razonamiento de cada uno:
   ensuciaría el saldo final consolidado de la cuenta.
 - **Tipo no reconocido en intereses**: sin tipo no hay tasa aplicable, y aplicar una por
   defecto sería inventar una condición comercial que el banco nunca pactó.
+- **Registro duplicado en intereses**: el archivo no trae período, así que una fila
+  idéntica a otra es la misma fila cargada dos veces y sumaría el interés doble. Las copias
+  pueden caer en particiones distintas, por eso no se detectan en el processor sino en un
+  step posterior (`stepDescartarDuplicados`) que compara con SQL sobre todo lo cargado,
+  conserva la primera y registra las demás en `errores_batch`.
 
 Descartar no es perder información: `errores_batch` guarda job, step, fase, motivo, la
 fila original del CSV y la hora, para que auditoría pueda revisar exactamente qué no entró.
@@ -231,6 +240,19 @@ Complementando el descarte, los steps declaran reintentos:
 
 Ante una falla transitoria de base de datos se reintenta el chunk en lugar de perder
 registros válidos.
+
+### Reejecución automática ante fallos críticos
+
+Si un job termina en `FAILED` porque la falla duró más que los reintentos, `BatchRunner`
+lo vuelve a lanzar con **los mismos parámetros**, hasta `banco.batch.reejecuciones-maximas`
+veces (2 por defecto) y con espera creciente desde 2 segundos.
+
+Con los mismos parámetros Spring Batch no crea una ejecución nueva: reanuda la instancia
+fallida. Los steps que ya habían terminado no se repiten, y el que falló continúa desde el
+último chunk confirmado. Los steps de carga declaran `startLimit` igual al intento original
+más las reejecuciones, así que un step con un problema permanente no se reintenta para
+siempre: el job termina en `FAILED` y el proceso sale con código 1 para que el
+planificador lo note.
 
 ### La bitácora se escribe en una transacción aparte
 
@@ -290,7 +312,7 @@ con 4 particiones frente a 1.
 
 ### Por qué `cuenta_id` no es la clave primaria de los intereses
 
-`intereses.csv` trae 1.000 filas con solo 50 `cuenta_id` distintos. Usar `cuenta_id` como
+`intereses_trimestrales.csv` trae 1.000 filas con solo 50 `cuenta_id` distintos. Usar `cuenta_id` como
 `@Id` provoca violación de clave primaria a partir de la fila 51. El detalle usa clave
 autogenerada y el maestro consolidado por cuenta es la tabla `cuentas`, que se calcula
 después agrupando el detalle.
@@ -337,34 +359,33 @@ préstamo e hipoteca porque el interés devengado aumenta la deuda. El signo de 
 mvn test
 ```
 
-32 pruebas unitarias sobre los casos sucios reales del dataset: los cuatro formatos de
+35 pruebas unitarias sobre los casos sucios reales del dataset: los cuatro formatos de
 fecha, el rechazo del mes 13, la unificación de `depósito` con y sin tilde, el cálculo de
-interés por tipo y cada regla de descarte.
+interés por tipo y cada regla de descarte. `BatchRunnerTest` verifica que un job fallido se
+relanza con los mismos parámetros y que, agotadas las reejecuciones, el proceso termina
+con error.
 
 ---
 
 ## 11. Evidencia de ejecución
 
-En la carpeta [`../evidencias/`](../evidencias/):
+La corrida sobre `fin_legacy_data` está en
+[`../evidencias/09-eft/01-batch-fin-legacy-data.txt`](../evidencias/09-eft/01-batch-fin-legacy-data.txt).
+Las corridas con el dataset anterior y la comparación de escalado siguen en
+[`../evidencias/`](../evidencias/).
 
-| Archivo | Contenido |
-|---|---|
-| `01-ejecucion-1-particion.log` | Corrida completa con 1 partición |
-| `02-ejecucion-4-particiones.log` | Corrida completa con 4 particiones |
-| `03-verificacion-bd.txt` | 11 consultas SQL sobre el resultado en PostgreSQL |
-| `04-comparacion-escalado.md` | Comparación de tiempos y prueba del paralelismo |
-
-Resultado de la última corrida:
+Resultado:
 
 | Tabla | Filas |
 |---|---:|
-| `transacciones` | 785 |
-| `resumen_diario` | 322 |
-| `intereses_calculados` | 526 |
+| `transacciones` | 789 (392 válidas, 397 anomalías) |
+| `resumen_diario` | 325 |
+| `intereses_calculados` | 538 |
 | `cuentas` | 50 |
 | `movimientos_anuales` | 952 |
 | `estado_cuenta_anual` | 20 |
-| `errores_batch` | 737 |
+| `errores_batch` | 721 |
 
-Los totales cuadran con el origen: 1.000 filas leídas por archivo, 215 + 474 + 48 = 737
-descartadas y registradas con su motivo.
+Los totales cuadran con el origen. De las 1.000 filas de cada archivo: 211 transacciones,
+462 intereses (459 inválidos más 3 duplicados) y 48 movimientos anuales quedaron fuera,
+211 + 462 + 48 = 721 registradas con su motivo.

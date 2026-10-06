@@ -1,10 +1,4 @@
-# Orquestacion completa del Banco XYZ.
-# Levanta infraestructura (base de datos y broker), los servicios de plataforma
-# (configuracion, descubrimiento y autorizacion) y los microservicios.
-#
-#   docker compose up -d --build
-#   docker compose logs -f banco-core-api
-#   docker compose down -v
+# Orquestacion completa del Banco XYZ: infraestructura, plataforma y microservicios
 
 name: banco-xyz
 
@@ -86,6 +80,8 @@ services:
       BFF_WEB_SECRET: ${BFF_WEB_SECRET:-secreto-bff-web}
       BFF_MOBILE_SECRET: ${BFF_MOBILE_SECRET:-secreto-bff-mobile}
       BFF_ATM_SECRET: ${BFF_ATM_SECRET:-secreto-bff-atm}
+      SERVICIO_CUENTAS_SECRET: ${SERVICIO_CUENTAS_SECRET:-secreto-servicio-cuentas}
+      PORTAL_OPERACIONES_SECRET: ${PORTAL_OPERACIONES_SECRET:-secreto-portal-operaciones}
     ports:
       - "9000:9000"
     healthcheck:
@@ -216,6 +212,105 @@ services:
       retries: 12
     depends_on:
       banco-core-api: { condition: service_healthy }
+    networks: [banco]
+
+  # --- servicios de dominio: sin puertos publicados, solo se llega por el gateway
+  servicio-clientes:
+    build:
+      context: .
+      dockerfile: servicio-clientes/Dockerfile
+    container_name: banco-clientes
+    environment:
+      CONFIG_URL: http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      AUTH_URL: http://auth-server:9000
+      DB_URL: jdbc:postgresql://postgres:5432/bank_legacy_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8085/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      postgres: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      auth-server: { condition: service_healthy }
+    networks: [banco]
+
+  servicio-cuentas:
+    build:
+      context: .
+      dockerfile: servicio-cuentas/Dockerfile
+    container_name: banco-cuentas
+    environment:
+      CONFIG_URL: http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      AUTH_URL: http://auth-server:9000
+      DB_URL: jdbc:postgresql://postgres:5432/bank_legacy_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      ARTEMIS_URL: tcp://artemis:61616
+      SERVICIO_CUENTAS_SECRET: ${SERVICIO_CUENTAS_SECRET:-secreto-servicio-cuentas}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8086/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      servicio-clientes: { condition: service_healthy }
+      artemis: { condition: service_healthy }
+    networks: [banco]
+
+  # Dos replicas sin container_name: Eureka registra ambas y el gateway reparte entre ellas
+  servicio-pagos:
+    build:
+      context: .
+      dockerfile: servicio-pagos/Dockerfile
+    deploy:
+      replicas: ${PAGOS_REPLICAS:-2}
+    environment:
+      CONFIG_URL: http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      AUTH_URL: http://auth-server:9000
+      DB_URL: jdbc:postgresql://postgres:5432/bank_legacy_db
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      ARTEMIS_URL: tcp://artemis:61616
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8087/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      postgres: { condition: service_healthy }
+      artemis: { condition: service_healthy }
+      config-server: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
+      auth-server: { condition: service_healthy }
+    networks: [banco]
+
+  # ---------------------------------------------------------------- borde --
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    container_name: banco-gateway
+    environment:
+      CONFIG_URL: http://config-server:8888
+      EUREKA_URL: http://eureka-server:8761/eureka/
+      TLS_KEYSTORE_PASSWORD: ${TLS_KEYSTORE_PASSWORD:-cambiar-en-produccion}
+    ports:
+      - "8443:8443"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -skf https://localhost:8443/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    depends_on:
+      config-server: { condition: service_healthy }
+      eureka-server: { condition: service_healthy }
     networks: [banco]
 
 volumes:

@@ -1,0 +1,264 @@
+﻿======================================================================
+ BANCO XYZ - EVIDENCIA DE LA PLATAFORMA DE MICROSERVICIOS
+ Generado: 2026-10-06 19:28:52
+ Todas las llamadas pasan por el gateway: https://localhost:8443
+======================================================================
+
+======================================================================
+ 1. SERVICE DISCOVERY
+======================================================================
+> GET http://localhost:8761/eureka/apps
+  API-GATEWAY                UP   LAPTOP-2RGGN8RD:api-gateway:8443
+  BANCO-CORE-API             UP   LAPTOP-2RGGN8RD:banco-core-api:8080
+  BFF-ATM                    UP   LAPTOP-2RGGN8RD:bff-atm:8083
+  BFF-MOBILE                 UP   LAPTOP-2RGGN8RD:bff-mobile:8082
+  BFF-WEB                    UP   LAPTOP-2RGGN8RD:bff-web:8081
+  SERVICIO-CLIENTES          UP   LAPTOP-2RGGN8RD:servicio-clientes:8085
+  SERVICIO-CUENTAS           UP   LAPTOP-2RGGN8RD:servicio-cuentas:8086
+  SERVICIO-NOTIFICACIONES    UP   LAPTOP-2RGGN8RD:servicio-notificaciones:8084
+  SERVICIO-PAGOS             UP   LAPTOP-2RGGN8RD:servicio-pagos:8088
+  SERVICIO-PAGOS             UP   LAPTOP-2RGGN8RD:servicio-pagos:8087
+
+servicio-pagos tiene dos instancias: el gateway reparte la carga entre ambas.
+
+======================================================================
+ 2. HTTPS EN EL PUNTO DE ENTRADA
+======================================================================
+> Conexion TLS a localhost:8443
+  protocolo negociado : Tls13
+  cifrado             : Aes128 128 bits
+  certificado         : CN=localhost, OU=Desarrollo, O=Banco XYZ, L=Santiago, C=CL
+  algoritmo de firma  : sha256RSA
+  valido hasta        : 2029-01-08
+  nombres alternativos: DNS Name=localhost, DNS Name=api-gateway, IP Address=127.0.0.1
+
+> GET http://localhost:8443/actuator/health   (sin TLS)
+  sin respuesta HTTP (codigo 000): el puerto solo habla TLS
+
+En la nube el certificado lo emite AWS Certificate Manager y el TLS termina
+en el balanceador; el certificado autofirmado es solo para desarrollo.
+
+======================================================================
+ 3. OAUTH2 Y AUTORIZACION POR SCOPE
+======================================================================
+Token del portal de operaciones: emitido (client_credentials, JWT firmado con RSA)
+Token del BFF movil: emitido, solo con el scope cuentas.leer
+
+--- Sin token
+> GET /api/v1/clientes
+  HTTP 401
+
+--- Token valido pero sin el scope necesario: el movil intenta depositar
+> POST /api/v1/pagos/depositos
+  {"cuentaId":101,"monto":1000,"referencia":"MOVIL-192852"}
+  HTTP 403
+
+======================================================================
+ 4. GESTION DE CLIENTES
+======================================================================
+
+--- Alta de un cliente. El RUT se valida con su digito verificador
+> POST /api/v1/clientes
+  {"rut":"20192852-4","nombre":"Camila Rojas","email":"camila.rojas@correo.cl","telefono":"+56912345678","segmento":"PERSONA"}
+  HTTP 201
+  {"id":7,"rut":"20192852-4","nombre":"Camila Rojas","email":"camila.rojas@correo.cl","telefono":"+56912345678","direccion":null,"fechaNacimiento":null,"segmento":"PERSONA","estado":"ACTIVO","creadoEn":"2026-10-06T19:28:53.2082876","actualizadoEn":"2026-10-06T19:28:53.2082876"}
+
+--- Mismo RUT otra vez
+> POST /api/v1/clientes
+  {"rut":"20192852-4","nombre":"Duplicado"}
+  HTTP 409
+  {"error":"CONFLICTO","mensaje":"ya existe un cliente con el RUT 20192852-4","fecha":"2026-10-06T19:28:53.4036053"}
+
+--- RUT con digito verificador incorrecto
+> POST /api/v1/clientes
+  {"rut":"12345678-9","nombre":"Prueba"}
+  HTTP 400
+  {"error":"DATOS_INVALIDOS","mensaje":"rut: el RUT no es valido","fecha":"2026-10-06T19:28:53.4746073"}
+
+--- Actualizacion de perfil
+> PUT /api/v1/clientes/7
+  {"nombre":"Camila Rojas Soto","email":"camila.rojas@correo.cl","direccion":"Av. Providencia 1234"}
+  HTTP 200
+  {"id":7,"rut":"20192852-4","nombre":"Camila Rojas Soto","email":"camila.rojas@correo.cl","telefono":null,"direccion":"Av. Providencia 1234","fechaNacimiento":null,"segmento":"PERSONA","estado":"ACTIVO","creadoEn":"2026-10-06T19:28:53.208288","actualizadoEn":"2026-10-06T19:28:53.5874173"}
+
+======================================================================
+ 5. GESTION DE CUENTAS
+======================================================================
+
+--- Apertura. servicio-cuentas valida al titular llamando a servicio-clientes por Eureka
+> POST /api/v1/cuentas
+  {"clienteId":7,"tipo":"ahorro","depositoInicial":50000}
+  HTTP 201
+  {"cuentaId":100001,"clienteId":7,"titular":"Camila Rojas Soto","tipo":"ahorro","saldo":50000,"estado":"ACTIVA","migrada":false,"abiertaEn":"2026-10-06T19:28:53.6789267","cerradaEn":null}
+
+La cuenta abierta en linea parte en 100000: el batch nunca toca ese rango.
+
+--- Apertura para un cliente que no existe
+> POST /api/v1/cuentas
+  {"clienteId":999999,"tipo":"ahorro"}
+  HTTP 422
+  {"error":"CLIENTE_INEXISTENTE","mensaje":"no existe el cliente 999999","fecha":"2026-10-06T19:28:53.7543839"}
+
+--- Una cuenta migrada por el batch, vista desde el mismo servicio
+> GET /api/v1/cuentas/101
+  HTTP 200
+  {"cuentaId":101,"clienteId":null,"titular":"John Doe","tipo":"ahorro","saldo":141348.76,"estado":"ACTIVA","migrada":true,"abiertaEn":null,"cerradaEn":null}
+
+======================================================================
+ 6. PROCESAMIENTO DE PAGOS
+======================================================================
+
+--- Deposito
+> POST /api/v1/pagos/depositos
+  {"cuentaId":100001,"monto":20000,"referencia":"DEP-192852","glosa":"Deposito en efectivo"}
+  HTTP 201
+  {"referencia":"DEP-192852","tipo":"DEPOSITO","cuentaOrigen":null,"cuentaDestino":100001,"monto":20000,"glosa":"Deposito en efectivo","saldoResultante":70000.00,"duplicado":false,"fecha":"2026-10-06T19:28:53.9059051"}
+
+--- Transferencia de la cuenta nueva a la cuenta migrada 101
+> POST /api/v1/pagos/transferencias
+  {"cuentaOrigen":100001,"cuentaDestino":101,"monto":15000,"referencia":"TRF-192852","glosa":"Arriendo"}
+  HTTP 201
+  {"referencia":"TRF-192852","tipo":"TRANSFERENCIA","cuentaOrigen":100001,"cuentaDestino":101,"monto":15000,"glosa":"Arriendo","saldoResultante":55000.00,"duplicado":false,"fecha":"2026-10-06T19:28:53.9985338"}
+
+--- La misma transferencia repetida, con la misma referencia
+> POST /api/v1/pagos/transferencias
+  {"cuentaOrigen":100001,"cuentaDestino":101,"monto":15000,"referencia":"TRF-192852","glosa":"Arriendo"}
+  HTTP 200
+  {"referencia":"TRF-192852","tipo":"TRANSFERENCIA","cuentaOrigen":100001,"cuentaDestino":101,"monto":15000.00,"glosa":"Arriendo","saldoResultante":55000.00,"duplicado":true,"fecha":"2026-10-06T19:28:53.998534"}
+
+HTTP 200 con duplicado:true y el mismo saldo: no se debito dos veces.
+
+--- Pago de un servicio
+> POST /api/v1/pagos/servicios
+  {"cuentaId":100001,"monto":12990,"referencia":"PAG-192852","convenio":"Electricidad"}
+  HTTP 201
+  {"referencia":"PAG-192852","tipo":"PAGO","cuentaOrigen":100001,"cuentaDestino":null,"monto":12990,"glosa":"Electricidad","saldoResultante":42010.00,"duplicado":false,"fecha":"2026-10-06T19:28:54.1698792"}
+
+--- Transferencia sin saldo suficiente
+> POST /api/v1/pagos/transferencias
+  {"cuentaOrigen":100001,"cuentaDestino":101,"monto":999999,"referencia":"TRF-SS-192852"}
+  HTTP 422
+  {"error":"SALDO_INSUFICIENTE","mensaje":"saldo insuficiente en la cuenta 100001","fecha":"2026-10-06T19:28:54.2574912"}
+
+--- Saldo de la cuenta tras las operaciones
+> GET /api/v1/cuentas/100001
+  HTTP 200
+  {"cuentaId":100001,"clienteId":7,"titular":"Camila Rojas Soto","tipo":"ahorro","saldo":42010.00,"estado":"ACTIVA","migrada":false,"abiertaEn":"2026-10-06T19:28:53.678927","cerradaEn":null}
+
+======================================================================
+ 7. BALANCEO DE CARGA
+======================================================================
+Seis consultas seguidas al mismo endpoint. La cabecera X-Atendido-Por
+la agrega cada instancia de servicio-pagos al responder.
+
+  peticion 1  ->  LAPTOP-2RGGN8RD:8087
+  peticion 2  ->  LAPTOP-2RGGN8RD:8088
+  peticion 3  ->  LAPTOP-2RGGN8RD:8087
+  peticion 4  ->  LAPTOP-2RGGN8RD:8088
+  peticion 5  ->  LAPTOP-2RGGN8RD:8087
+  peticion 6  ->  LAPTOP-2RGGN8RD:8088
+
+======================================================================
+ 8. ALERTAS DE SEGURIDAD
+======================================================================
+
+--- Mantenimiento: se bloquea la cuenta
+> PATCH /api/v1/cuentas/100001
+  {"estado":"BLOQUEADA"}
+  HTTP 200
+  {"cuentaId":100001,"clienteId":7,"titular":"Camila Rojas Soto","tipo":"ahorro","saldo":42010.00,"estado":"BLOQUEADA","migrada":false,"abiertaEn":"2026-10-06T19:28:53.678927","cerradaEn":null}
+
+--- Intento de deposito sobre la cuenta bloqueada
+> POST /api/v1/pagos/depositos
+  {"cuentaId":100001,"monto":5000,"referencia":"DEP-BLQ-192852"}
+  HTTP 422
+  {"error":"CUENTA_NO_OPERATIVA","mensaje":"la cuenta 100001 esta BLOQUEADA","fecha":"2026-10-06T19:28:54.8471369"}
+
+Se rechaza y ademas se publica una alerta en el topico banco.eventos.alertas.
+
+--- Se desbloquea
+> PATCH /api/v1/cuentas/100001
+  {"estado":"ACTIVA"}
+  HTTP 200
+  {"cuentaId":100001,"clienteId":7,"titular":"Camila Rojas Soto","tipo":"ahorro","saldo":42010.00,"estado":"ACTIVA","migrada":false,"abiertaEn":"2026-10-06T19:28:53.678927","cerradaEn":null}
+
+--- Deposito sobre el umbral de 1.000.000
+> POST /api/v1/pagos/depositos
+  {"cuentaId":102,"monto":1500000,"referencia":"DEP-ALTO-192852"}
+  HTTP 201
+  {"referencia":"DEP-ALTO-192852","tipo":"DEPOSITO","cuentaOrigen":null,"cuentaDestino":102,"monto":1500000,"glosa":null,"saldoResultante":3090526.66,"duplicado":false,"fecha":"2026-10-06T19:28:54.9671816"}
+
+Se aplica, pero tambien genera una alerta para revision.
+
+--- Alertas recibidas por servicio-notificaciones
+  [MEDIA] MONTO_INUSUAL        cuenta 102     operacion igual o superior al umbral de 1000000
+  [ALTA] CUENTA_NO_OPERATIVA  cuenta 100001  intento de operar sobre una cuenta en estado BLOQUEADA
+
+======================================================================
+ 9. EVENTOS DE TRANSACCIONES COMPLETADAS
+======================================================================
+Cada operacion confirmada publico un evento en banco.eventos.transaccion.
+servicio-notificaciones los consume y genera el aviso al cliente:
+
+  Deposito recibido        Deposito recibido por $1.500.000 en tu cuenta 102. Saldo disponible: $3.090.527.
+  Pago realizado           Pago realizado por $12.990 en tu cuenta 100001. Saldo disponible: $42.010.
+  Transferencia recibida   Transferencia recibida por $15.000 en tu cuenta 101. Saldo disponible: $156.349.
+  Transferencia enviada    Transferencia enviada por $15.000 en tu cuenta 100001. Saldo disponible: $55.000.
+  Deposito recibido        Deposito recibido por $20.000 en tu cuenta 100001. Saldo disponible: $70.000.
+  Cuenta abierta           Tu cuenta 100001 ya esta operativa. Saldo inicial: $50.000.
+
+======================================================================
+ 10. CIERRE DE CUENTA
+======================================================================
+
+--- Cierre con saldo pendiente
+> POST /api/v1/cuentas/100001/cierre
+  HTTP 422
+  {"error":"SALDO_PENDIENTE","mensaje":"la cuenta tiene saldo 42010.00; debe quedar en cero antes del cierre","fecha":"2026-10-06T19:28:58.2350892"}
+
+--- Se transfiere el saldo restante (42010.00) a otra cuenta
+> POST /api/v1/pagos/transferencias
+  {"cuentaOrigen":100001,"cuentaDestino":101,"monto":42010.00,"referencia":"TRF-CIERRE-192852"}
+  HTTP 201
+  {"referencia":"TRF-CIERRE-192852","tipo":"TRANSFERENCIA","cuentaOrigen":100001,"cuentaDestino":101,"monto":42010.00,"glosa":null,"saldoResultante":0.00,"duplicado":false,"fecha":"2026-10-06T19:28:58.353797"}
+
+--- Cierre con saldo cero
+> POST /api/v1/cuentas/100001/cierre
+  HTTP 200
+  {"cuentaId":100001,"clienteId":7,"titular":"Camila Rojas Soto","tipo":"ahorro","saldo":0.00,"estado":"CERRADA","migrada":false,"abiertaEn":"2026-10-06T19:28:53.678927","cerradaEn":"2026-10-06T19:28:58.4238483"}
+
+======================================================================
+ 11. TOLERANCIA A FALLOS
+======================================================================
+Se detiene servicio-clientes y se intenta abrir cuentas.
+  intento 1: HTTP 503  no se pudo validar al cliente en este momento; intente nuevamente en unos minutos
+  intento 2: HTTP 503  no se pudo validar al cliente en este momento; intente nuevamente en unos minutos
+  intento 3: HTTP 503  no se pudo validar al cliente en este momento; intente nuevamente en unos minutos
+  intento 4: HTTP 503  no se pudo validar al cliente en este momento; intente nuevamente en unos minutos
+  intento 5: HTTP 503  no se pudo validar al cliente en este momento; intente nuevamente en unos minutos
+  intento 6: HTTP 503  no se pudo validar al cliente en este momento; intente nuevamente en unos minutos
+
+> GET http://localhost:8086/actuator/circuitbreakers
+  circuito clientes: estado=OPEN  fallas=1  tasa=50.0%  rechazadas sin llamar=17
+
+Comportamiento alternativo: sin poder confirmar al titular, la cuenta no se
+abre y el cliente recibe un 503 claro. Con el circuito abierto ni siquiera se
+intenta la llamada: se responde de inmediato.
+
+Se vuelve a levantar servicio-clientes.
+  servicio-clientes de vuelta (HTTP 200).
+
+======================================================================
+ 12. MONITOREO
+======================================================================
+> GET http://localhost:8087/actuator/prometheus  (extracto)
+  http_server_requests_seconds_count{error="none",exception="none",method="POST",outcome="SUCCESS",status="201",uri="/api/v1/pagos/depositos",} 2.0
+  http_server_requests_seconds_count{error="none",exception="none",method="GET",outcome="SUCCESS",status="200",uri="/api/v1/pagos",} 6.0
+  http_server_requests_seconds_count{error="none",exception="none",method="POST",outcome="SUCCESS",status="200",uri="/api/v1/pagos/transferencias",} 1.0
+  http_server_requests_seconds_count{error="none",exception="none",method="POST",outcome="SUCCESS",status="201",uri="/api/v1/pagos/transferencias",} 2.0
+
+Cada servicio expone metricas en formato Prometheus y cada linea de log lleva
+el traceId de la peticion, que viaja entre servicios. Extracto del log de
+servicio-cuentas durante la apertura:
+  19:15:10.985 INFO  [6ac580fe5ae2f37436078d9df92480b0] [io-8086-exec-2] CuentaService              : Cuenta abierta | cuenta=100000 cliente=6 tipo=ahorro deposito=50000
+  19:28:53.679 INFO  [6ac584354f3fe4fabade8da1572c867b] [io-8086-exec-9] CuentaService              : Cuenta abierta | cuenta=100001 cliente=7 tipo=ahorro deposito=50000

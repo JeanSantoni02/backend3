@@ -1,0 +1,48 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bank_legacy_db}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  artemis:
+    mode: ${ARTEMIS_MODE:native}
+    broker-url: ${ARTEMIS_URL:tcp://localhost:61616}
+  jms:
+    pub-sub-domain: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${AUTH_URL:http://localhost:9000}
+
+banco:
+  clientes:
+    url: http://servicio-clientes
+
+# El circuito envuelve al reintento; un cliente inexistente es una respuesta valida, no una falla
+resilience4j:
+  circuitbreaker:
+    circuit-breaker-aspect-order: 3
+    instances:
+      clientes:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
+        permitted-number-of-calls-in-half-open-state: 2
+        automatic-transition-from-open-to-half-open-enabled: false
+        register-health-indicator: true
+        ignore-exceptions:
+          - com.bank.xyz.cuentas.error.ClienteInexistenteException
+  retry:
+    retry-aspect-order: 2
+    instances:
+      clientes:
+        max-attempts: 3
+        wait-duration: 300ms
+        exponential-backoff-multiplier: 2
+        ignore-exceptions:
+          - com.bank.xyz.cuentas.error.ClienteInexistenteException

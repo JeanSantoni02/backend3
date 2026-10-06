@@ -25,7 +25,17 @@ public class BatchProperties {
     private int retryLimit = 3;
 
     /** Ruta en el classpath donde estan los CSV oficiales. */
-    private String rutaDatos = "data/semana_3/";
+    private String rutaDatos = "data/fin_legacy/";
+
+    private String archivoTransacciones = "movimientos_financieros_diarios.csv";
+    private String archivoIntereses = "intereses_trimestrales.csv";
+    private String archivoAnuales = "estados_financieros_anuales.csv";
+
+    /** Veces que se relanza un job que termino en FAILED antes de darlo por perdido. */
+    private int reejecucionesMaximas = 2;
+
+    /** Espera antes de cada reejecucion; se duplica en cada intento. */
+    private long esperaReejecucionMs = 2000;
 
     public int getChunkSize() { return chunkSize; }
     public void setChunkSize(int chunkSize) { this.chunkSize = chunkSize; }
@@ -50,4 +60,19 @@ public class BatchProperties {
 
     public String getRutaDatos() { return rutaDatos; }
     public void setRutaDatos(String rutaDatos) { this.rutaDatos = rutaDatos; }
+
+    public String getArchivoTransacciones() { return archivoTransacciones; }
+    public void setArchivoTransacciones(String v) { this.archivoTransacciones = v; }
+
+    public String getArchivoIntereses() { return archivoIntereses; }
+    public void setArchivoIntereses(String v) { this.archivoIntereses = v; }
+
+    public String getArchivoAnuales() { return archivoAnuales; }
+    public void setArchivoAnuales(String v) { this.archivoAnuales = v; }
+
+    public int getReejecucionesMaximas() { return reejecucionesMaximas; }
+    public void setReejecucionesMaximas(int v) { this.reejecucionesMaximas = v; }
+
+    public long getEsperaReejecucionMs() { return esperaReejecucionMs; }
+    public void setEsperaReejecucionMs(long v) { this.esperaReejecucionMs = v; }
 }

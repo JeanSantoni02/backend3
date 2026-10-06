@@ -39,7 +39,6 @@ import org.springframework.transaction.PlatformTransactionManager;
 public class TransaccionesJobConfig {
 
     public static final String JOB = "jobReporteTransaccionesDiarias";
-    private static final String ARCHIVO = "transacciones.csv";
 
     private static final String SQL_LIMPIEZA = "DELETE FROM resumen_diario";
 
@@ -72,21 +71,16 @@ public class TransaccionesJobConfig {
     }
 
     private Resource recurso() {
-        return new ClassPathResource(propiedades.getRutaDatos() + ARCHIVO);
+        return new ClassPathResource(propiedades.getRutaDatos() + propiedades.getArchivoTransacciones());
     }
 
-    // ------------------------------------------------------------------
-    //  Particionador
-    // ------------------------------------------------------------------
+    // Particionador
     @Bean
     public Partitioner particionadorTransacciones() {
         return new RangoLineasPartitioner(recurso(), 1);
     }
 
-    // ------------------------------------------------------------------
-    //  Reader: uno por particion, por eso @StepScope.
-    //  Los valores llegan del ExecutionContext que arma el particionador.
-    // ------------------------------------------------------------------
+    // Reader por particion (@StepScope): los rangos llegan del ExecutionContext
     @Bean
     @StepScope
     public FlatFileItemReader<TransaccionCsv> lectorTransacciones(
@@ -113,14 +107,11 @@ public class TransaccionesJobConfig {
     public ItemWriter<Transaccion> escritorTransacciones(EntityManagerFactory emf) {
         JpaItemWriter<Transaccion> escritor = new JpaItemWriter<>();
         escritor.setEntityManagerFactory(emf);
-        // merge (no persist) porque el id viene del archivo: reprocesar el mismo
-        // archivo actualiza la fila en vez de duplicarla.
+        // merge porque el id viene del archivo: un reinicio no duplica filas
         return escritor;
     }
 
-    // ------------------------------------------------------------------
-    //  Step trabajador: el que corre en paralelo, uno por particion
-    // ------------------------------------------------------------------
+    // Step trabajador: corre en paralelo, uno por particion
     @Bean
     public Step stepCargaTransaccionesTrabajador(
             FlatFileItemReader<TransaccionCsv> lectorTransacciones,
@@ -136,17 +127,14 @@ public class TransaccionesJobConfig {
                 .faultTolerant()
                 .skipPolicy(new BancoSkipPolicy(propiedades.getSkipLimit()))
                 .skip(RegistroInvalidoException.class)
-                // Fallas transitorias de base de datos: se reintenta el chunk en
-                // vez de perder registros validos.
+                // Ante una falla transitoria de la base se reintenta el chunk sin perder registros validos
                 .retryLimit(propiedades.getRetryLimit())
                 .retry(TransientDataAccessException.class)
                 .listener(registroErrores)
                 .build();
     }
 
-    // ------------------------------------------------------------------
-    //  Step maestro: reparte las particiones entre los hilos del pool
-    // ------------------------------------------------------------------
+    // Step maestro: reparte las particiones entre los hilos del pool
     @Bean
     public Step stepCargaTransaccionesMaestro(Step stepCargaTransaccionesTrabajador,
                                               Partitioner particionadorTransacciones,
@@ -156,16 +144,17 @@ public class TransaccionesJobConfig {
                 .step(stepCargaTransaccionesTrabajador)
                 .gridSize(propiedades.getParticiones())
                 .taskExecutor(ejecutorParticiones)
+                // Primer intento mas las reejecuciones automaticas; despues el step queda cerrado
+                .startLimit(propiedades.getReejecucionesMaximas() + 1)
                 .build();
     }
 
-    // ------------------------------------------------------------------
-    //  Step de resumen
-    // ------------------------------------------------------------------
+    // Step de resumen
     @Bean
     public Step stepLimpiarErroresTransacciones(JdbcTemplate jdbcTemplate) {
         return new StepBuilder("stepLimpiarErroresTransacciones", jobRepository)
-                .tasklet(new LimpiezaTasklet(null, JOB, jdbcTemplate), transactionManager)
+                // Recarga completa: si no, quedarian filas de una corrida anterior y el resumen las sumaria
+                .tasklet(new LimpiezaTasklet("transacciones", JOB, jdbcTemplate), transactionManager)
                 .build();
     }
 

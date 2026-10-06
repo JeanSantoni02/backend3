@@ -6,6 +6,7 @@ import com.bank.xyz.batch.config.InteresesJobConfig;
 import com.bank.xyz.batch.config.TransaccionesJobConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobParameters;
@@ -87,8 +88,23 @@ public class BatchRunner implements ApplicationRunner, ExitCodeGenerator {
 
         JobExecution ejecucion = jobLauncher.run(job, parametros);
 
+        // Con los mismos parametros se reanuda la instancia fallida desde el step que se cayo
+        long espera = propiedades.getEsperaReejecucionMs();
+        for (int intento = 1;
+             ejecucion.getStatus() == BatchStatus.FAILED && intento <= propiedades.getReejecucionesMaximas();
+             intento++) {
+
+            log.warn("El job {} fallo. Reejecucion automatica {}/{} en {} ms",
+                    nombreJob, intento, propiedades.getReejecucionesMaximas(), espera);
+            Thread.sleep(espera);
+            espera *= 2;
+
+            ejecucion = jobLauncher.run(job, parametros);
+        }
+
         if (ejecucion.getStatus().isUnsuccessful()) {
-            log.error("El job {} termino con estado {}", nombreJob, ejecucion.getStatus());
+            log.error("El job {} termino con estado {} tras agotar las reejecuciones",
+                    nombreJob, ejecucion.getStatus());
             codigoSalida = 1;
         }
     }

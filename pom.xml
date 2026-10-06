@@ -35,6 +35,10 @@
         <module>bff-web</module>
         <module>bff-mobile</module>
         <module>bff-atm</module>
+        <module>servicio-clientes</module>
+        <module>servicio-cuentas</module>
+        <module>servicio-pagos</module>
+        <module>api-gateway</module>
     </modules>
 
     <dependencyManagement>

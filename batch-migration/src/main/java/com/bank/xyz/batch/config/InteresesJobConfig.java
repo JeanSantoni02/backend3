@@ -11,6 +11,8 @@ import com.bank.xyz.batch.processor.InteresProcessor;
 import com.bank.xyz.batch.tasklet.AgregacionTasklet;
 import com.bank.xyz.batch.tasklet.LimpiezaTasklet;
 import jakarta.persistence.EntityManagerFactory;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.StepScope;
@@ -20,6 +22,7 @@ import org.springframework.batch.core.partition.support.Partitioner;
 import org.springframework.batch.core.repository.JobRepository;
 import org.springframework.batch.core.step.builder.StepBuilder;
 import org.springframework.batch.item.ItemWriter;
+import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.batch.item.database.JpaItemWriter;
 import org.springframework.batch.item.file.FlatFileItemReader;
 import org.springframework.batch.item.file.builder.FlatFileItemReaderBuilder;
@@ -38,10 +41,15 @@ import org.springframework.transaction.PlatformTransactionManager;
 @Configuration
 public class InteresesJobConfig {
 
-    public static final String JOB = "jobCalculoInteresesMensuales";
-    private static final String ARCHIVO = "intereses.csv";
+    private static final Logger log = LoggerFactory.getLogger(InteresesJobConfig.class);
 
-    private static final String SQL_LIMPIEZA = "DELETE FROM cuentas";
+    public static final String JOB = "jobCalculoInteresesMensuales";
+
+    // Las cuentas abiertas en linea parten aqui y el batch nunca las reconstruye
+    public static final int PRIMERA_CUENTA_EN_LINEA = 100_000;
+
+    private static final String SQL_LIMPIEZA =
+            "DELETE FROM cuentas WHERE cuenta_id < " + PRIMERA_CUENTA_EN_LINEA;
 
     private static final String SQL_CONSOLIDAR = """
             INSERT INTO cuentas
@@ -55,7 +63,34 @@ public class InteresesJobConfig {
                    COALESCE(SUM(saldo_final), 0),
                    now()
               FROM intereses_calculados
+             WHERE cuenta_id < %d
              GROUP BY cuenta_id
+            """.formatted(PRIMERA_CUENTA_EN_LINEA);
+
+    // Sin periodo en el archivo, dos filas identicas son un duplicado; se buscan tras cargar todas las particiones
+    private static final String SQL_REGISTRAR_DUPLICADOS = """
+            INSERT INTO errores_batch
+                (job_nombre, step_nombre, fase, motivo, registro, excepcion, ocurrido_en)
+            SELECT '%s', 'stepDescartarDuplicados', 'PROCESO',
+                   'registro duplicado: identico a la fila cargada con id ' || primero,
+                   concat_ws(',', cuenta_id, nombre, saldo_inicial, edad, tipo_cuenta),
+                   'RegistroDuplicado', now()
+              FROM (SELECT id, cuenta_id, nombre, saldo_inicial, edad, tipo_cuenta,
+                           min(id) OVER (PARTITION BY cuenta_id, nombre, saldo_inicial,
+                                                      edad, tipo_cuenta) AS primero
+                      FROM intereses_calculados) t
+             WHERE id <> primero
+            """.formatted(JOB);
+
+    private static final String SQL_QUITAR_DUPLICADOS = """
+            DELETE FROM intereses_calculados t
+             USING intereses_calculados o
+             WHERE t.cuenta_id = o.cuenta_id
+               AND t.nombre IS NOT DISTINCT FROM o.nombre
+               AND t.saldo_inicial IS NOT DISTINCT FROM o.saldo_inicial
+               AND t.edad IS NOT DISTINCT FROM o.edad
+               AND t.tipo_cuenta IS NOT DISTINCT FROM o.tipo_cuenta
+               AND t.id > o.id
             """;
 
     private final JobRepository jobRepository;
@@ -71,7 +106,7 @@ public class InteresesJobConfig {
     }
 
     private Resource recurso() {
-        return new ClassPathResource(propiedades.getRutaDatos() + ARCHIVO);
+        return new ClassPathResource(propiedades.getRutaDatos() + propiedades.getArchivoIntereses());
     }
 
     @Bean
@@ -105,8 +140,7 @@ public class InteresesJobConfig {
     public ItemWriter<InteresCalculado> escritorIntereses(EntityManagerFactory emf) {
         JpaItemWriter<InteresCalculado> escritor = new JpaItemWriter<>();
         escritor.setEntityManagerFactory(emf);
-        // La clave es autogenerada, asi que persist() evita el SELECT previo
-        // que haria merge() en cada una de las 1000 filas.
+        // Clave autogenerada: persist() evita el SELECT previo que haria merge() en cada fila
         escritor.setUsePersist(true);
         return escritor;
     }
@@ -139,6 +173,8 @@ public class InteresesJobConfig {
                 .step(stepCargaInteresesTrabajador)
                 .gridSize(propiedades.getParticiones())
                 .taskExecutor(ejecutorParticiones)
+                // Primer intento mas las reejecuciones automaticas; despues el step queda cerrado
+                .startLimit(propiedades.getReejecucionesMaximas() + 1)
                 .build();
     }
 
@@ -147,6 +183,20 @@ public class InteresesJobConfig {
         return new StepBuilder("stepLimpiarIntereses", jobRepository)
                 .tasklet(new LimpiezaTasklet("intereses_calculados", JOB, jdbcTemplate),
                         transactionManager)
+                .build();
+    }
+
+    @Bean
+    public Step stepDescartarDuplicados(JdbcTemplate jdbcTemplate) {
+        return new StepBuilder("stepDescartarDuplicados", jobRepository)
+                .tasklet((contribucion, contexto) -> {
+                    int registrados = jdbcTemplate.update(SQL_REGISTRAR_DUPLICADOS);
+                    int quitados = jdbcTemplate.update(SQL_QUITAR_DUPLICADOS);
+                    contribucion.incrementFilterCount(quitados);
+                    log.info("Duplicados descartados: {} (registrados en errores_batch: {})",
+                            quitados, registrados);
+                    return RepeatStatus.FINISHED;
+                }, transactionManager)
                 .build();
     }
 
@@ -161,6 +211,7 @@ public class InteresesJobConfig {
     @Bean
     public Job jobCalculoInteresesMensuales(Step stepLimpiarIntereses,
                                             Step stepCargaInteresesMaestro,
+                                            Step stepDescartarDuplicados,
                                             Step stepActualizarCuentas,
                                             MetricasJobListener metricas) {
         return new JobBuilder(JOB, jobRepository)
@@ -168,6 +219,7 @@ public class InteresesJobConfig {
                 .listener(metricas)
                 .start(stepLimpiarIntereses)
                 .next(stepCargaInteresesMaestro)
+                .next(stepDescartarDuplicados)
                 .next(stepActualizarCuentas)
                 .build();
     }

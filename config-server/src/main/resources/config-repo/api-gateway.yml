@@ -1,0 +1,83 @@
+# Entrada unica: lb:// resuelve el nombre en Eureka y reparte entre las instancias registradas
+spring:
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 3000
+        response-timeout: 15s
+      default-filters:
+        - AddResponseHeader=X-Banco-Gateway, api-gateway
+      routes:
+        - id: clientes
+          uri: lb://servicio-clientes
+          predicates:
+            - Path=/api/v1/clientes/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: clientes
+                fallbackUri: forward:/respaldo/clientes
+
+        - id: cuentas
+          uri: lb://servicio-cuentas
+          predicates:
+            - Path=/api/v1/cuentas/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: cuentas
+                fallbackUri: forward:/respaldo/cuentas
+
+        - id: pagos
+          uri: lb://servicio-pagos
+          predicates:
+            - Path=/api/v1/pagos/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: pagos
+                fallbackUri: forward:/respaldo/pagos
+
+        - id: notificaciones
+          uri: lb://servicio-notificaciones
+          predicates:
+            - Path=/api/v1/notificaciones/**,/api/v1/alertas/**
+
+        - id: bff-web
+          uri: lb://bff-web
+          predicates:
+            - Path=/bff/web/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: bff-web
+                fallbackUri: forward:/respaldo/bff
+
+        - id: bff-movil
+          uri: lb://bff-mobile
+          predicates:
+            - Path=/bff/movil/**
+          filters:
+            - name: CircuitBreaker
+              args:
+                name: bff-movil
+                fallbackUri: forward:/respaldo/bff
+
+        - id: bff-atm
+          uri: lb://bff-atm
+          predicates:
+            - Path=/bff/atm/**
+
+# El limite por defecto del circuito es 1 s, poco para una transferencia que espera un bloqueo
+resilience4j:
+  timelimiter:
+    configs:
+      default:
+        timeout-duration: 12s
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 15s
