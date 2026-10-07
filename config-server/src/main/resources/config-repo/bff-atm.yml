@@ -12,7 +12,7 @@ resilience4j:
   # circuito. Con el orden por defecto es al reves y el circuito nunca
   # alcanza a reevaluar su estado.
   circuitbreaker:
-    circuit-breaker-aspect-order: 3
+    circuit-breaker-aspect-order: 2
     instances:
       coreApi:
         sliding-window-type: COUNT_BASED
@@ -31,7 +31,7 @@ resilience4j:
         ignore-exceptions:
           - com.bank.xyz.bff.atm.error.OperacionRechazadaException
   retry:
-    retry-aspect-order: 2
+    retry-aspect-order: 3
     instances:
       coreApi:
         max-attempts: 3

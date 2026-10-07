@@ -446,6 +446,8 @@ powershell -ExecutionPolicy Bypass -File evidencias\generar-evidencia-eft.ps1
 |---|---|
 | `01-batch-fin-legacy-data.txt` | Ejecución de los tres jobs |
 | `02-microservicios.txt` | Descubrimiento, HTTPS, OAuth2, los tres servicios, balanceo, eventos, alertas y tolerancia a fallos |
+| `03-escalado-batch.txt` | Tiempos del batch con una y con cuatro particiones |
+| `04-equivalencia-particiones.txt` | Sumas de control idénticas con una y con cuatro particiones |
 | `capturas/` | Eureka, Swagger de cada servicio, alertas, notificaciones y estado del circuito |
 
 ---

@@ -1,0 +1,15 @@
+Equivalencia de resultados entre 1 y 4 particiones (fin_legacy_data)
+Sumas de control calculadas en PostgreSQL despues de cada corrida
+
+tabla                     filas     suma importe    control
+transacciones               789        820400.00        397
+resumen_diario              325        820400.00        397
+intereses                   538         26787.12         50
+cuentas_migradas             50       4425787.12        538
+movimientos_anuales         952       1266900.00         20
+estado_cuenta_anual          20       -395500.00         20
+errores_batch               721                           8
+
+Resultado: los conteos y las sumas de control coinciden en ambas configuraciones.
+Ademas cuadran entre si: el resumen diario suma lo mismo que el detalle de
+transacciones, y los registros consolidados en cuentas son los 538 intereses.

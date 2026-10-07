@@ -1,0 +1,8 @@
+Escalado del batch sobre fin_legacy_data
+Mejor tiempo de 2 corridas por configuracion; solo cambia --banco.batch.particiones
+
+Job                                  1 particion   4 particiones   Mejora
+jobReporteTransaccionesDiarias           1256 ms          952 ms      24%
+jobCalculoInteresesMensuales              872 ms          509 ms      42%
+jobEstadosCuentaAnuales                   563 ms          250 ms      56%
+TOTAL                                    2691 ms         1711 ms      36%

@@ -140,7 +140,7 @@ como falla, una tanda de clientes sin fondos abriría el circuito y dejaría sin
 que sí tienen plata.
 
 **El circuito envuelve al reintento.** Los aspectos están ordenados a propósito
-(`retry-aspect-order: 2`, `circuit-breaker-aspect-order: 3`): primero se reintenta la llamada
+(`retry-aspect-order: 3`, `circuit-breaker-aspect-order: 2`): primero se reintenta la llamada
 y solo si la operación completa fracasa cuenta como un fallo del circuito. Con el orden por
 omisión es al revés, y entonces un solo problema de red cuenta tres veces y abre el circuito
 antes de tiempo.
